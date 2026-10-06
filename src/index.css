@@ -1,0 +1,111 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg-canvas: #FBF9F5;
+    --text-primary: #141413;
+    --text-secondary: #4A4944;
+    --accent: #D84C24;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background-color: var(--bg-canvas);
+    color: var(--text-primary);
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    line-height: 1.65;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Instrument Sans', 'Satoshi', sans-serif;
+    letter-spacing: -0.015em;
+    font-weight: 600;
+  }
+
+  /* Sleek minimalist scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #FBF9F5;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #DDD9CF;
+    border-radius: 9999px;
+  }
+}
+
+/* Hide scrollbar utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none !important;
+}
+.no-scrollbar {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+}
+
+/* Subtle Film Grain */
+.noise-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 999;
+  opacity: 0.02;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+}
+
+/* Fluid Hero & Section Typography */
+.text-hero-headline {
+  font-size: clamp(2.8rem, 6.5vw, 5.8rem);
+  line-height: 1.05;
+  letter-spacing: -0.025em;
+}
+
+.text-section-title {
+  font-size: clamp(2.2rem, 4.8vw, 4.2rem);
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+}
+
+/* Elegant Underline Hover */
+.link-editorial {
+  position: relative;
+  display: inline-block;
+}
+
+.link-editorial::after {
+  content: '';
+  position: absolute;
+  width: 100%;
+  transform: scaleX(0);
+  height: 1.5px;
+  bottom: -2px;
+  left: 0;
+  background-color: currentColor;
+  transform-origin: bottom right;
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.link-editorial:hover::after {
+  transform: scaleX(1);
+  transform-origin: bottom left;
+}
+
+/* Custom minimal cursor */
+@media (hover: none) and (pointer: coarse) {
+  .custom-cursor-element {
+    display: none !important;
+  }
+}
