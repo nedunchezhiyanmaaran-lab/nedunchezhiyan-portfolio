@@ -56,10 +56,13 @@ export const Process: React.FC = () => {
       <div className="max-w-7xl mx-auto px-6 sm:px-10">
         {/* Section Header */}
         <div className="space-y-4 mb-16 sm:mb-20">
-          <div className="inline-flex items-center space-x-2.5 px-3.5 py-1.5 rounded-full bg-accent/10 border border-accent/20">
-            <span className="w-2 h-2 rounded-full bg-accent" />
-            <span className="text-xs uppercase tracking-widest text-accent font-semibold font-mono">
-              04 &middot; Methodology &amp; Execution
+          <div className="flex items-center space-x-3">
+            <span className="font-mono text-xs sm:text-sm font-bold text-accent tracking-tight">
+              (04)
+            </span>
+            <span className="w-8 h-[2px] bg-accent" />
+            <span className="font-mono text-[11px] sm:text-xs uppercase tracking-[0.22em] font-semibold text-ink">
+              Methodology &amp; Execution
             </span>
           </div>
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">

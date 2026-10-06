@@ -98,12 +98,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
 
   const handlePinSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (pinInput === '2026' || pinInput.toLowerCase() === 'admin' || pinInput === '0000') {
+    if (pinInput.trim() === '887766') {
       setIsAuthenticated(true);
       sessionStorage.setItem('nedun_admin_auth', 'true');
       setPinError('');
     } else {
-      setPinError('Invalid PIN code. Try 2026 or click Quick Unlock below.');
+      setPinError('Invalid access PIN. Access denied.');
     }
   };
 
@@ -156,13 +156,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
           <form onSubmit={handlePinSubmit} className="space-y-4">
             <div>
               <label className="block text-[11px] font-mono uppercase tracking-wider text-white/50 mb-1.5">
-                Access Code (Default: 2026)
+                Admin Security PIN
               </label>
               <input
                 type="password"
                 value={pinInput}
                 onChange={(e) => setPinInput(e.target.value)}
-                placeholder="Enter PIN..."
+                placeholder="••••••"
                 autoFocus
                 className="w-full px-4 py-3 rounded-xl bg-black/40 border border-white/10 text-white font-mono text-center tracking-widest text-lg focus:outline-none focus:border-accent"
               />
@@ -171,20 +171,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
 
             <button
               type="submit"
-              className="w-full py-3 rounded-xl bg-accent text-white font-semibold text-xs uppercase tracking-wider hover:bg-white hover:text-black transition-all duration-200"
+              className="w-full py-3.5 rounded-xl bg-accent text-white font-semibold text-xs uppercase tracking-wider hover:bg-white hover:text-black transition-all duration-200 shadow-md"
             >
               Authenticate &amp; Open Dashboard
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setIsAuthenticated(true);
-                sessionStorage.setItem('nedun_admin_auth', 'true');
-              }}
-              className="w-full py-2.5 rounded-xl bg-white/5 border border-white/10 text-white/70 text-xs hover:bg-white/10 hover:text-white transition-all"
-            >
-              ⚡ Quick Unlock (1-Click)
             </button>
           </form>
 

@@ -66,10 +66,13 @@ export const Contact: React.FC = () => {
     <section id="contact" className="bg-white border-b border-black/[0.08] py-28 sm:py-36">
       <div className="max-w-7xl mx-auto px-6 sm:px-10">
         {/* Section Header Label */}
-        <div className="inline-flex items-center space-x-2.5 px-3.5 py-1.5 rounded-full bg-accent/10 border border-accent/20 mb-16">
-          <span className="w-2 h-2 rounded-full bg-accent" />
-          <span className="text-xs uppercase tracking-widest text-accent font-bold font-mono">
-            05 &middot; Start a Project
+        <div className="flex items-center space-x-3 mb-16">
+          <span className="font-mono text-xs sm:text-sm font-bold text-accent tracking-tight">
+            (05)
+          </span>
+          <span className="w-8 h-[2px] bg-accent" />
+          <span className="font-mono text-[11px] sm:text-xs uppercase tracking-[0.22em] font-semibold text-ink">
+            Start a Project &amp; Inquiries
           </span>
         </div>
 
