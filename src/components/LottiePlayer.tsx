@@ -3,7 +3,7 @@ import { Lottie } from 'lottie-react';
 
 interface LottiePlayerProps {
   src?: string;
-  animationData?: object;
+  animationData?: any;
   loop?: boolean;
   autoplay?: boolean;
   className?: string;
@@ -11,7 +11,6 @@ interface LottiePlayerProps {
 }
 
 export const LottiePlayer: React.FC<LottiePlayerProps> = ({
-  src,
   animationData,
   loop = true,
   autoplay = true,
@@ -19,9 +18,8 @@ export const LottiePlayer: React.FC<LottiePlayerProps> = ({
   fallbackIcon,
 }) => {
   const [hasError, setHasError] = useState(false);
-  const targetSrc = animationData || src;
 
-  if (!targetSrc || hasError) {
+  if (!animationData || hasError) {
     return fallbackIcon ? (
       <div className={`flex items-center justify-center ${className}`}>{fallbackIcon}</div>
     ) : null;
@@ -30,7 +28,7 @@ export const LottiePlayer: React.FC<LottiePlayerProps> = ({
   return (
     <div className={`relative flex items-center justify-center ${className}`}>
       <Lottie
-        src={targetSrc}
+        src={animationData}
         loop={loop}
         autoplay={autoplay}
         className="w-full h-full"
@@ -41,3 +39,5 @@ export const LottiePlayer: React.FC<LottiePlayerProps> = ({
     </div>
   );
 };
+
+
