@@ -10,7 +10,7 @@ export const Contact: React.FC = () => {
   const [copied, setCopied] = useState(false);
   const [formSubmitted, setFormSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [selectedProjectType, setSelectedProjectType] = useState('Web Application');
+  const [selectedProjectType, setSelectedProjectType] = useState('New Web App Build');
   const [selectedTimeline, setSelectedTimeline] = useState('Within 1 Month');
   const [customBudget, setCustomBudget] = useState('');
   const [customTimeline, setCustomTimeline] = useState('');
@@ -32,11 +32,11 @@ export const Contact: React.FC = () => {
   };
 
   const projectTypes = [
-    { label: 'Web Application', desc: 'Custom apps & platforms' },
-    { label: 'SaaS MVP', desc: 'Fast founder launch' },
-    { label: 'Business Website', desc: 'High-conversion brand site' },
+    { label: 'New Web App Build', desc: 'Zero-to-one product / MVP' },
+    { label: 'App Revamp & Modernization', desc: 'Redesign, refactor & scale' },
+    { label: 'SaaS Platform', desc: 'Enterprise & multi-tenant' },
     { label: 'Full Stack System', desc: 'API, database & client' },
-    { label: 'AI Integration', desc: 'LLMs & smart workflows' },
+    { label: 'AI Integration & Workflows', desc: 'LLMs & smart tools' },
   ];
 
   const budgetTiers = [

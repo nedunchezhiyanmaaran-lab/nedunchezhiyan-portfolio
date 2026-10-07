@@ -17,9 +17,14 @@ const parseDeliverable = (raw: string): DeliverableParsed => {
 
 const SERVICE_META = [
   {
-    category: 'PRODUCT & ARCHITECTURE',
+    category: 'NEW BUILDS & ARCHITECTURE',
     timeline: '3–5 Weeks Delivery',
     accentColor: '#D84C24',
+  },
+  {
+    category: 'APP REVAMPS & MODERNIZATION',
+    timeline: '2–4 Weeks Delivery',
+    accentColor: '#059669',
   },
   {
     category: 'FULL-STACK SYSTEMS',
@@ -29,7 +34,7 @@ const SERVICE_META = [
   {
     category: 'PERFORMANCE & AUDITS',
     timeline: '1–2 Weeks Sprint',
-    accentColor: '#059669',
+    accentColor: '#D97706',
   },
   {
     category: 'AI & AUTOMATION PIPELINES',

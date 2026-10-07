@@ -19,26 +19,25 @@ import {
   Sparkles,
   Lock,
   Search,
-  CheckCircle2,
   Filter,
   ChevronLeft,
   ChevronRight,
-  FileText,
+  Calendar,
+  MessageSquare,
+  X,
 } from 'lucide-react';
 import {
   getAnalyticsSummary,
   updateLeadStatus,
   deleteLead,
+  deleteVisitorFeedback,
   exportAnalyticsFile,
   resetAnalyticsData,
   logAnalyticsEvent,
   syncSupabaseData,
-  isCurrentDeviceWhitelisted,
-  setDeviceWhitelisted,
-  fetchAndWhitelistCurrentIP,
-  type AnalyticsFilterMode,
   type AnalyticsSummary,
   type LeadSubmission,
+  type VisitorFeedback,
 } from '../../utils/analytics';
 
 interface AdminDashboardProps {
@@ -51,35 +50,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
   });
   const [pinInput, setPinInput] = useState<string>('');
   const [pinError, setPinError] = useState<string>('');
-  const [activeTab, setActiveTab] = useState<'overview' | 'traffic' | 'projects' | 'leads' | 'tech' | 'stream'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'traffic' | 'projects' | 'leads' | 'tech' | 'stream' | 'feedbacks'>('overview');
   const [timeframe, setTimeframe] = useState<7 | 14 | 30>(14);
-  const [filterMode, setFilterMode] = useState<AnalyticsFilterMode>('external_only');
-  const [isWhitelisted, setIsWhitelisted] = useState<boolean>(() => isCurrentDeviceWhitelisted());
-  const [currentIP, setCurrentIP] = useState<string>('Detecting IP...');
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedLead, setSelectedLead] = useState<LeadSubmission | null>(null);
+  const [selectedDevice, setSelectedDevice] = useState<any | null>(null);
+  const [selectedFeedbackDevice, setSelectedFeedbackDevice] = useState<any | null>(null);
   const [leadNoteInput, setLeadNoteInput] = useState<string>('');
+  const [sessionSearch, setSessionSearch] = useState<string>('');
   const [activeHoverPoint, setActiveHoverPoint] = useState<number | null>(null);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [isSupabaseSynced, setIsSupabaseSynced] = useState<boolean>(true);
 
+  // Visitor Feedbacks filter state
+  const [feedbackDeviceFilter, setFeedbackDeviceFilter] = useState<string>('all');
+  const [feedbackSearch, setFeedbackSearch] = useState<string>('');
+
   // Live Event Stream filters & pagination state
   const [eventSearch, setEventSearch] = useState<string>('');
-  const [eventTypeFilter, setEventTypeFilter] = useState<string>('all');
   const [eventSourceFilter, setEventSourceFilter] = useState<string>('all');
   const [eventPage, setEventPage] = useState<number>(1);
   const [eventPageSize, setEventPageSize] = useState<number>(15);
 
-  // Fetch IP and auto-whitelist on mount
-  useEffect(() => {
-    fetchAndWhitelistCurrentIP().then((ip) => {
-      setCurrentIP(ip);
-      setIsWhitelisted(true);
-    });
-  }, []);
-
-  // Refresh and sync data from Supabase with filter mode
+  // Refresh and sync data from Supabase
   const refreshData = async () => {
     setIsRefreshing(true);
     try {
@@ -88,7 +82,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
     } catch {
       setIsSupabaseSynced(false);
     }
-    const data = getAnalyticsSummary(timeframe, filterMode);
+    const data = getAnalyticsSummary(timeframe);
     setSummary(data);
     setTimeout(() => setIsRefreshing(false), 300);
   };
@@ -97,15 +91,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
     refreshData();
     const interval = setInterval(refreshData, 10000); // 10s live polling
     return () => clearInterval(interval);
-  }, [timeframe, filterMode]);
-
-  const handleToggleWhitelist = () => {
-    const nextState = !isWhitelisted;
-    setIsWhitelisted(nextState);
-    setDeviceWhitelisted(nextState);
-    logAnalyticsEvent('visit', nextState ? '💻 Current Laptop tagged as Whitelisted Owner Device' : 'Device un-whitelisted');
-    refreshData();
-  };
+  }, [timeframe]);
 
   const handlePinSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -137,6 +123,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
     if (window.confirm('Delete this inquiry record?')) {
       deleteLead(id);
       if (selectedLead?.id === id) setSelectedLead(null);
+      refreshData();
+    }
+  };
+
+  const handleDeleteFeedback = async (id: string) => {
+    if (window.confirm('Delete this visitor feedback record?')) {
+      await deleteVisitorFeedback(id);
       refreshData();
     }
   };
@@ -249,32 +242,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
 
         {/* Header Right Actions */}
         <div className="flex items-center space-x-3">
-          {/* Traffic Filter Selector */}
-          <div className="hidden lg:flex items-center p-1 rounded-xl bg-black/40 border border-white/10 text-xs font-mono">
-            <button
-              onClick={() => setFilterMode('all')}
-              className={`px-2.5 py-1 rounded-lg transition-all ${
-                filterMode === 'all' ? 'bg-accent text-white font-bold' : 'text-white/60 hover:text-white'
-              }`}
-            >
-              All Traffic
-            </button>
-            <button
-              onClick={() => setFilterMode('owner_only')}
-              className={`px-2.5 py-1 rounded-lg transition-all flex items-center space-x-1 ${
-                filterMode === 'owner_only' ? 'bg-accent text-white font-bold' : 'text-white/60 hover:text-white'
-              }`}
-            >
-              <span>💻 My Laptop</span>
-            </button>
-            <button
-              onClick={() => setFilterMode('external_only')}
-              className={`px-2.5 py-1 rounded-lg transition-all ${
-                filterMode === 'external_only' ? 'bg-accent text-white font-bold' : 'text-white/60 hover:text-white'
-              }`}
-            >
-              👥 External
-            </button>
+          {/* External Traffic Indicator Badge */}
+          <div className="hidden lg:flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-accent/10 border border-accent/20 text-xs font-mono text-accent">
+            <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+            <span className="font-semibold">External Visitors Telemetry</span>
           </div>
 
           {/* Timeframe Selector */}
@@ -328,6 +299,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
               { id: 'traffic', label: 'Traffic & Trends', icon: Activity },
               { id: 'projects', label: 'Project Engagement', icon: Layers },
               { id: 'leads', label: `Lead Inbox (${summary.leads.length})`, icon: Send },
+              { id: 'feedbacks', label: `💬 Visitor Feedbacks (${summary.feedbacks?.length || 0})`, icon: MessageSquare },
               { id: 'tech', label: 'Audience & Stack', icon: Globe },
               { id: 'stream', label: 'Live Event Stream', icon: Sparkles },
             ].map((tab) => {
@@ -404,18 +376,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                     <span className="text-3xl font-bold font-display text-white">
                       {summary.totalVisitors.toLocaleString()}
                     </span>
-                    <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-white/5 text-white/60">
-                      {filterMode === 'external_only'
-                        ? 'External Only'
-                        : filterMode === 'owner_only'
-                        ? 'My Laptop'
-                        : 'All Traffic'}
+                    <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-accent/10 border border-accent/20 text-accent font-semibold">
+                      External Only
                     </span>
                   </div>
                   <p className="text-[11px] text-white/50">
-                    {filterMode === 'external_only'
-                      ? 'Self/Laptop traffic automatically excluded'
-                      : `Past ${timeframe} days activity`}
+                    Self/Laptop traffic excluded &bull; Past {timeframe}D
                   </p>
                 </div>
 
@@ -457,7 +423,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                     </span>
                   </div>
                   <p className="text-[11px] text-white/50">
-                    {filterMode === 'owner_only' ? 'Your local testing dwell time' : 'Visitor engagement length'}
+                    External visitor engagement length
                   </p>
                 </div>
 
@@ -783,6 +749,121 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                   ))}
                 </div>
               </div>
+
+              {/* Individual Visitor Sessions & Pageviews Activity Log */}
+              <div className="p-6 rounded-3xl bg-[#181816] border border-white/10 space-y-5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center space-x-2">
+                      <h3 className="font-display text-base font-bold text-white">
+                        Individual Visitor Sessions &amp; Pageview Breakdown
+                      </h3>
+                      <span className="px-2.5 py-0.5 rounded-full bg-accent/10 border border-accent/20 text-accent font-mono text-[11px] font-bold">
+                        {(summary.sessions || []).length} Recorded Sessions
+                      </span>
+                    </div>
+                    <p className="text-xs text-white/50">
+                      Granular breakdown showing each visitor device, their return visit number, and total pageviews viewed during their sessions.
+                    </p>
+                  </div>
+
+                  <div className="relative w-full sm:w-64">
+                    <Search className="w-3.5 h-3.5 text-white/40 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Filter by OS, browser, referrer..."
+                      value={sessionSearch}
+                      onChange={(e) => setSessionSearch(e.target.value)}
+                      className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-black/40 border border-white/10 text-xs text-white focus:outline-none focus:border-accent font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2.5">
+                  {(summary.sessions || [])
+                    .filter((s) => {
+                      if (!sessionSearch.trim()) return true;
+                      const q = sessionSearch.toLowerCase();
+                      return (
+                        (s.os || '').toLowerCase().includes(q) ||
+                        (s.browser || '').toLowerCase().includes(q) ||
+                        (s.referrer || '').toLowerCase().includes(q) ||
+                        (s.device || '').toLowerCase().includes(q) ||
+                        (s.id || '').toLowerCase().includes(q)
+                      );
+                    })
+                    .map((s, idx) => {
+                      const d = new Date(s.timestamp);
+                      const timeStr = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+                      const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
+
+                      return (
+                        <div
+                          key={s.id || idx}
+                          className="p-4 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-white/15 transition-all flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs"
+                        >
+                          <div className="flex items-start md:items-center space-x-3">
+                            <div className="p-2 rounded-xl bg-accent/10 border border-accent/20 text-accent shrink-0 mt-0.5 md:mt-0 font-mono text-[11px] font-bold">
+                              #{idx + 1}
+                            </div>
+
+                            <div className="space-y-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-bold text-white">
+                                  {s.device || 'Desktop'} ({s.os} / {s.browser})
+                                </span>
+
+                                {/* Pageviews Badge */}
+                                <span
+                                  className={`px-2.5 py-0.5 rounded-md font-mono text-[11px] font-bold flex items-center space-x-1 ${
+                                    (s.pageViews || 1) > 1
+                                      ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-400'
+                                      : 'bg-accent/10 border border-accent/20 text-accent'
+                                  }`}
+                                >
+                                  <Eye className="w-3 h-3" />
+                                  <span>{s.pageViews || 1} {s.pageViews === 1 ? 'Pageview' : 'Pageviews'}</span>
+                                </span>
+
+                                {/* Visit Number Badge */}
+                                {s.visitCount && s.visitCount > 1 ? (
+                                  <span className="px-2 py-0.5 rounded-md bg-purple-500/10 border border-purple-500/20 text-purple-300 font-mono text-[10px] font-semibold">
+                                    🔄 Visit #{s.visitCount}
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-white/50 font-mono text-[10px]">
+                                    ✨ 1st Visit
+                                  </span>
+                                )}
+
+                                <span className="px-2 py-0.5 rounded-md bg-blue-500/10 border border-blue-500/20 text-blue-400 font-mono text-[10px]">
+                                  {s.referrer || 'Direct'}
+                                </span>
+                              </div>
+
+                              {/* Sections viewed */}
+                              {s.sectionsViewed && s.sectionsViewed.length > 0 && (
+                                <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                                  <span className="text-[10px] font-mono text-white/40">Sections:</span>
+                                  {s.sectionsViewed.map((sec, i) => (
+                                    <span key={i} className="px-1.5 py-0.2 rounded bg-white/5 text-[10px] font-mono text-white/60">
+                                      {sec}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex md:flex-col items-center md:items-end justify-between md:justify-center shrink-0 border-t md:border-t-0 border-white/5 pt-2 md:pt-0 font-mono text-[11px]">
+                            <span className="text-white/70">{dateStr} · {timeStr}</span>
+                            <span className="text-accent">⏱️ {s.duration || 1}s dwell</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
             </div>
           )}
 
@@ -1049,70 +1130,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                   Audience, Platforms &amp; Referral Channels
                 </h3>
                 <p className="text-xs text-white/50">
-                  Telemetry breakdown of devices, operating systems, browsers, and discovery sources.
+                  Telemetry breakdown of external visitors' devices, operating systems, browsers, and discovery sources from Supabase.
                 </p>
-              </div>
-
-              {/* Developer Laptop Whitelist Card */}
-              <div className="p-6 rounded-3xl bg-gradient-to-r from-[#1E1E1C] via-[#24221D] to-[#1A1A18] border border-accent/30 shadow-xl space-y-5">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-10 h-10 rounded-2xl bg-accent/20 border border-accent/30 flex items-center justify-center text-accent">
-                      <Laptop className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <div className="flex items-center space-x-2">
-                        <h4 className="font-display font-bold text-base text-white">
-                          Nedunchezhiyan&apos;s Development Laptop
-                        </h4>
-                        <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-mono font-bold flex items-center space-x-1">
-                          <CheckCircle2 className="w-3 h-3" />
-                          <span>Whitelisted</span>
-                        </span>
-                      </div>
-                      <p className="text-xs text-white/60">
-                        This device is tagged as the primary owner workstation. Actions here are logged and can be filtered.
-                      </p>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={handleToggleWhitelist}
-                    className={`px-4 py-2 rounded-xl text-xs font-mono font-semibold transition-all ${
-                      isWhitelisted
-                        ? 'bg-accent text-white hover:bg-white hover:text-black'
-                        : 'bg-white/10 text-white/70 hover:bg-white/20 hover:text-white'
-                    }`}
-                  >
-                    {isWhitelisted ? '✓ Whitelist Active' : '+ Whitelist This Device'}
-                  </button>
-                </div>
-
-                {/* Live Hardware Telemetry Strip */}
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-3 border-t border-white/10 text-xs font-mono">
-                  <div className="p-3 rounded-xl bg-black/40 border border-white/5">
-                    <span className="text-white/40 block text-[10px] uppercase">Whitelisted IP</span>
-                    <span className="text-emerald-400 font-bold truncate block">{currentIP}</span>
-                  </div>
-                  <div className="p-3 rounded-xl bg-black/40 border border-white/5">
-                    <span className="text-white/40 block text-[10px] uppercase">OS &amp; Host</span>
-                    <span className="text-white font-semibold">Windows PC (Dell)</span>
-                  </div>
-                  <div className="p-3 rounded-xl bg-black/40 border border-white/5">
-                    <span className="text-white/40 block text-[10px] uppercase">Browser &amp; Engine</span>
-                    <span className="text-white font-semibold">Chrome / V8</span>
-                  </div>
-                  <div className="p-3 rounded-xl bg-black/40 border border-white/5">
-                    <span className="text-white/40 block text-[10px] uppercase">Screen Viewport</span>
-                    <span className="text-accent font-semibold">
-                      {typeof window !== 'undefined' ? `${window.innerWidth} × ${window.innerHeight}` : 'Desktop'}
-                    </span>
-                  </div>
-                  <div className="p-3 rounded-xl bg-black/40 border border-white/5">
-                    <span className="text-white/40 block text-[10px] uppercase">Timezone</span>
-                    <span className="text-white font-semibold">IST (Asia/Kolkata)</span>
-                  </div>
-                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1226,51 +1245,194 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
 
           {/* TAB 6: LIVE EVENT STREAM */}
           {activeTab === 'stream' && (() => {
+            const rawSessions = summary.sessions || [];
             const rawEvents = summary.recentEvents || [];
 
-            // Compute counts for filter pills
-            const typeCounts = {
-              all: rawEvents.length,
-              visit: rawEvents.filter((e) => e.type === 'visit').length,
-              project_view: rawEvents.filter((e) => e.type === 'project_view').length,
-              live_demo: rawEvents.filter((e) => e.type === 'live_demo').length,
-              contact_submit: rawEvents.filter((e) => e.type === 'contact_submit').length,
-              section_read: rawEvents.filter((e) => e.type === 'section_read').length,
+            // Group sessions & events by unique device
+            interface DeviceActivity {
+              id: string;
+              visitorId: string;
+              device: string;
+              os: string;
+              browser: string;
+              referrer: string;
+              totalViews: number;
+              sessionCount: number;
+              totalDuration: number;
+              firstSeen: string;
+              lastSeen: string;
+              sections: string[];
+              sessions: any[];
+              actions: {
+                id: string;
+                type: string;
+                description: string;
+                timestamp: string;
+                meta?: string;
+              }[];
+            }
+
+            const deviceMap = new Map<string, DeviceActivity>();
+
+            const getDeviceKey = (device: string, os: string, browser: string, referrer: string, visitorId?: string) => {
+              if (visitorId && visitorId.startsWith('vis_')) {
+                return visitorId.toLowerCase();
+              }
+              const d = (device || 'desktop').toLowerCase();
+              const o = (os || 'windows').toLowerCase();
+              const b = (browser || 'chrome').toLowerCase();
+              const r = (referrer || 'direct').toLowerCase();
+              return `${d}_${o}_${b}_${r}`;
             };
 
-            const filteredEvents = rawEvents.filter((evt) => {
-              // Type filter
-              if (eventTypeFilter !== 'all') {
-                if (evt.type !== eventTypeFilter) return false;
+            // 1. Ingest Sessions
+            rawSessions.forEach((s) => {
+              const devKey = getDeviceKey(s.device, s.os, s.browser, s.referrer, s.visitorId);
+              if (!deviceMap.has(devKey)) {
+                deviceMap.set(devKey, {
+                  id: s.id,
+                  visitorId: s.visitorId || devKey,
+                  device: s.device || 'Desktop',
+                  os: s.os || 'Windows',
+                  browser: s.browser || 'Chrome',
+                  referrer: s.referrer || 'Direct',
+                  totalViews: s.pageViews || 1,
+                  sessionCount: s.visitCount || 1,
+                  totalDuration: s.duration || 1,
+                  firstSeen: s.timestamp,
+                  lastSeen: s.timestamp,
+                  sections: [...(s.sectionsViewed || [])],
+                  sessions: [s],
+                  actions: [],
+                });
+              } else {
+                const item = deviceMap.get(devKey)!;
+                item.totalViews += (s.pageViews || 1);
+                item.sessionCount = Math.max(item.sessionCount + 1, (s.visitCount || 1));
+                item.totalDuration += (s.duration || 1);
+                if (new Date(s.timestamp) > new Date(item.lastSeen)) item.lastSeen = s.timestamp;
+                if (new Date(s.timestamp) < new Date(item.firstSeen)) item.firstSeen = s.timestamp;
+                (s.sectionsViewed || []).forEach((sec) => {
+                  if (!item.sections.includes(sec)) item.sections.push(sec);
+                });
+                if (!item.sessions.some((ex) => ex.id === s.id)) {
+                  item.sessions.push(s);
+                }
+              }
+            });
+
+            // 2. Attach Events to Devices (Correlate to exact device or closest active session)
+            rawEvents.forEach((evt) => {
+              const desc = evt.description.toLowerCase();
+              const meta = (evt.meta || '').toLowerCase();
+              let matchedDevice: DeviceActivity | null = null;
+
+              // A. Match explicit OS & Browser mentioned in event text or meta
+              for (const item of deviceMap.values()) {
+                const matchesOS = desc.includes(item.os.toLowerCase()) || meta.includes(item.os.toLowerCase());
+                const matchesBrowser = desc.includes(item.browser.toLowerCase()) || meta.includes(item.browser.toLowerCase());
+                const matchesRef = item.referrer.toLowerCase() !== 'direct' ? (desc.includes(item.referrer.toLowerCase()) || meta.includes(item.referrer.toLowerCase())) : true;
+
+                if (matchesOS && matchesBrowser && matchesRef) {
+                  matchedDevice = item;
+                  break;
+                }
               }
 
+              // B. Correlate by closest active session timestamp (e.g. section read / modal open during a visit)
+              if (!matchedDevice) {
+                const evtTime = new Date(evt.timestamp).getTime();
+                let closestDiff = Infinity;
+
+                for (const item of deviceMap.values()) {
+                  for (const ses of item.sessions) {
+                    const sesTime = new Date(ses.timestamp).getTime();
+                    const diff = Math.abs(evtTime - sesTime);
+                    // Match within 15 minutes of a recorded visit
+                    if (diff < 15 * 60 * 1000 && diff < closestDiff) {
+                      closestDiff = diff;
+                      matchedDevice = item;
+                    }
+                  }
+                }
+              }
+
+              // C. If still unmatched, try matching by OS keywords if present
+              if (!matchedDevice) {
+                let targetOS = '';
+                if (desc.includes('android') || meta.includes('android')) targetOS = 'android';
+                else if (desc.includes('macos') || desc.includes('safari') || meta.includes('macos')) targetOS = 'macos';
+                else if (desc.includes('linux') || meta.includes('linux')) targetOS = 'linux';
+                else if (desc.includes('windows') || meta.includes('windows')) targetOS = 'windows';
+
+                if (targetOS) {
+                  for (const item of deviceMap.values()) {
+                    if (item.os.toLowerCase() === targetOS) {
+                      matchedDevice = item;
+                      break;
+                    }
+                  }
+                }
+              }
+
+              // D. Attach to the matched device
+              if (matchedDevice) {
+                const alreadyExists = matchedDevice.actions.some(
+                  (a) => a.id === evt.id || (a.description === evt.description && a.timestamp === evt.timestamp)
+                );
+                if (!alreadyExists) {
+                  matchedDevice.actions.push(evt);
+                }
+                if (new Date(evt.timestamp) > new Date(matchedDevice.lastSeen)) {
+                  matchedDevice.lastSeen = evt.timestamp;
+                }
+              }
+            });
+
+            // Sort actions inside each device by date descending
+            deviceMap.forEach((dev) => {
+              dev.actions.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+              dev.sessions.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+            });
+
+            const allDevices = Array.from(deviceMap.values()).sort(
+              (a, b) => new Date(b.lastSeen).getTime() - new Date(a.lastSeen).getTime()
+            );
+
+            // Filter Devices
+            const filteredDevices = allDevices.filter((dev) => {
               // Source filter
               if (eventSourceFilter !== 'all') {
-                const desc = evt.description.toLowerCase();
-                if (eventSourceFilter === 'linkedin' && !desc.includes('linkedin')) return false;
-                if (eventSourceFilter === 'reddit' && !desc.includes('reddit')) return false;
-                if (eventSourceFilter === 'safari' && !desc.includes('safari')) return false;
-                if (eventSourceFilter === 'android' && !desc.includes('android')) return false;
-                if (eventSourceFilter === 'direct' && !desc.includes('direct')) return false;
+                const ref = dev.referrer.toLowerCase();
+                const os = dev.os.toLowerCase();
+                const br = dev.browser.toLowerCase();
+                if (eventSourceFilter === 'linkedin' && !ref.includes('linkedin')) return false;
+                if (eventSourceFilter === 'reddit' && !ref.includes('reddit')) return false;
+                if (eventSourceFilter === 'safari' && !br.includes('safari') && !os.includes('macos')) return false;
+                if (eventSourceFilter === 'android' && !os.includes('android')) return false;
+                if (eventSourceFilter === 'direct' && !ref.includes('direct')) return false;
               }
 
               // Search query
               if (eventSearch.trim()) {
                 const q = eventSearch.toLowerCase();
-                const matchesDesc = evt.description.toLowerCase().includes(q);
-                const matchesMeta = (evt.meta || '').toLowerCase().includes(q);
-                const matchesType = evt.type.toLowerCase().includes(q);
-                return matchesDesc || matchesMeta || matchesType;
+                const matchesDev = dev.device.toLowerCase().includes(q);
+                const matchesOS = dev.os.toLowerCase().includes(q);
+                const matchesBr = dev.browser.toLowerCase().includes(q);
+                const matchesRef = dev.referrer.toLowerCase().includes(q);
+                const matchesSec = dev.sections.some((s) => s.toLowerCase().includes(q));
+                const matchesAct = dev.actions.some((a) => a.description.toLowerCase().includes(q));
+                return matchesDev || matchesOS || matchesBr || matchesRef || matchesSec || matchesAct;
               }
 
               return true;
             });
 
-            const totalEventPages = Math.max(Math.ceil(filteredEvents.length / eventPageSize), 1);
-            const currentPage = Math.min(eventPage, totalEventPages);
-            const paginatedEvents = filteredEvents.slice((currentPage - 1) * eventPageSize, currentPage * eventPageSize);
+            const totalDevicePages = Math.max(Math.ceil(filteredDevices.length / eventPageSize), 1);
+            const currentPage = Math.min(eventPage, totalDevicePages);
+            const paginatedDevices = filteredDevices.slice((currentPage - 1) * eventPageSize, currentPage * eventPageSize);
 
-            const formatEventDateTime = (isoString: string) => {
+            const formatDateTime = (isoString: string) => {
               try {
                 const d = new Date(isoString);
                 const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
@@ -1292,38 +1454,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                         <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
                       </span>
                       <h3 className="font-display text-xl font-bold text-white">
-                        Real-Time Visitor Event Stream
+                        Unique Visitor Devices &amp; View Activity Stream
                       </h3>
-                      <span className="px-2.5 py-0.5 rounded-full bg-white/10 text-white/70 text-xs font-mono font-semibold">
-                        {filteredEvents.length} External Events
-                      </span>
-                      <span className="px-2 py-0.5 rounded-full bg-accent/15 border border-accent/30 text-accent text-[11px] font-mono font-bold">
-                        {filterMode === 'external_only' ? '🛡️ Owner Logs Excluded' : filterMode === 'owner_only' ? '💻 Owner Logs Only' : 'All Logs'}
+                      <span className="px-2.5 py-0.5 rounded-full bg-accent/15 border border-accent/30 text-accent text-[11px] font-mono font-bold">
+                        {allDevices.length} Unique Devices Tracked
                       </span>
                     </div>
                     <p className="text-xs text-white/50">
-                      Chronological stream of external visitor connections, project demo previews, and form submissions from Supabase (Localhost &amp; owner devices excluded).
+                      Aggregated telemetry ledger grouping repeat sessions per unique device. <strong className="text-white/80">Click any device card</strong> to inspect its full chronological visit timeline, each session date/time, and granular interactions.
                     </p>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <div className="flex items-center p-1 rounded-xl bg-black/40 border border-white/10 text-xs font-mono">
-                      <button
-                        onClick={() => setFilterMode('external_only')}
-                        className={`px-3 py-1.5 rounded-lg transition-all ${
-                          filterMode === 'external_only' ? 'bg-accent text-white font-bold' : 'text-white/60 hover:text-white'
-                        }`}
-                      >
-                        👥 External Visitors
-                      </button>
-                      <button
-                        onClick={() => setFilterMode('owner_only')}
-                        className={`px-3 py-1.5 rounded-lg transition-all ${
-                          filterMode === 'owner_only' ? 'bg-accent text-white font-bold' : 'text-white/60 hover:text-white'
-                        }`}
-                      >
-                        💻 Owner Logs
-                      </button>
-                    </div>
                   </div>
                 </div>
 
@@ -1335,13 +1474,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                       <Search className="w-4 h-4 text-white/40 absolute left-3.5 top-1/2 -translate-y-1/2" />
                       <input
                         type="text"
-                        placeholder="Search events by platform, OS, browser, or project..."
+                        placeholder="Search devices by OS, browser, referrer, or project..."
                         value={eventSearch}
                         onChange={(e) => {
                           setEventSearch(e.target.value);
                           setEventPage(1);
                         }}
-                        className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-black/40 border border-white/10 text-xs text-white focus:outline-none focus:border-accent"
+                        className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-black/40 border border-white/10 text-xs text-white focus:outline-none focus:border-accent font-mono"
                       />
                       {eventSearch && (
                         <button
@@ -1364,7 +1503,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                         }}
                         className="px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-xs font-mono text-white/80 focus:outline-none focus:border-accent"
                       >
-                        <option value="all">All Traffic Sources</option>
+                        <option value="all">All Traffic Sources ({allDevices.length})</option>
                         <option value="linkedin">LinkedIn Referrals</option>
                         <option value="reddit">Reddit Traffic</option>
                         <option value="safari">Safari / macOS</option>
@@ -1387,57 +1526,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                         <option value="10">10</option>
                         <option value="15">15</option>
                         <option value="30">30</option>
-                        <option value="50">50</option>
                       </select>
                     </div>
                   </div>
-
-                  {/* Event Type Filter Pills */}
-                  <div className="flex flex-wrap gap-2 pt-1 border-t border-white/5">
-                    {[
-                      { key: 'all', label: 'All Events', count: typeCounts.all },
-                      { key: 'visit', label: 'Visits & Connects', count: typeCounts.visit },
-                      { key: 'project_view', label: 'Project Previews', count: typeCounts.project_view },
-                      { key: 'live_demo', label: 'Live App Launches', count: typeCounts.live_demo },
-                      { key: 'contact_submit', label: 'Inquiries', count: typeCounts.contact_submit },
-                      { key: 'section_read', label: 'Section Reads', count: typeCounts.section_read },
-                    ].map((btn) => (
-                      <button
-                        key={btn.key}
-                        onClick={() => {
-                          setEventTypeFilter(btn.key);
-                          setEventPage(1);
-                        }}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-mono transition-all flex items-center space-x-1.5 ${
-                          eventTypeFilter === btn.key
-                            ? 'bg-accent text-white font-bold shadow-sm'
-                            : 'bg-white/[0.04] text-white/60 hover:bg-white/10 hover:text-white'
-                        }`}
-                      >
-                        <span>{btn.label}</span>
-                        <span
-                          className={`px-1.5 py-0.2 rounded-md text-[10px] ${
-                            eventTypeFilter === btn.key
-                              ? 'bg-black/30 text-white'
-                              : 'bg-white/10 text-white/50'
-                          }`}
-                        >
-                          {btn.count}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
                 </div>
 
-                {/* Event Cards List */}
-                <div className="p-6 rounded-3xl bg-[#181816] border border-white/10 space-y-3">
-                  {paginatedEvents.length === 0 ? (
-                    <div className="p-12 text-center text-white/40 text-xs font-mono space-y-2">
-                      <p>No matching events found for current filters.</p>
+                {/* Device Cards List with View Counts & Timestamps */}
+                <div className="space-y-4">
+                  {paginatedDevices.length === 0 ? (
+                    <div className="p-12 text-center rounded-3xl bg-[#181816] border border-white/10 text-white/40 text-xs font-mono space-y-2">
+                      <p>No matching devices found for current filters.</p>
                       <button
                         onClick={() => {
                           setEventSearch('');
-                          setEventTypeFilter('all');
                           setEventSourceFilter('all');
                         }}
                         className="text-accent underline text-xs"
@@ -1446,57 +1547,123 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                       </button>
                     </div>
                   ) : (
-                    paginatedEvents.map((evt) => {
-                      const { dateStr, timeStr } = formatEventDateTime(evt.timestamp);
+                    paginatedDevices.map((dev, idx) => {
+                      const latestTime = formatDateTime(dev.lastSeen);
+                      const firstTime = formatDateTime(dev.firstSeen);
+
                       return (
                         <div
-                          key={evt.id}
-                          className="p-4 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-white/15 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs group"
+                          key={dev.visitorId || idx}
+                          onClick={() => setSelectedDevice(dev)}
+                          className="p-5 sm:p-6 rounded-3xl bg-[#181816] border border-white/10 hover:border-accent/40 hover:bg-[#1c1c19] transition-all duration-200 space-y-4 shadow-lg group cursor-pointer relative"
                         >
-                          <div className="flex items-start sm:items-center space-x-3.5">
-                            {/* Status Glyph */}
-                            <div className="mt-0.5 sm:mt-0 p-2 rounded-xl bg-white/[0.04] border border-white/5 shrink-0 flex items-center justify-center">
-                              {evt.type === 'contact_submit' && <Mail className="w-3.5 h-3.5 text-accent" />}
-                              {evt.type === 'project_view' && <Eye className="w-3.5 h-3.5 text-blue-400" />}
-                              {evt.type === 'live_demo' && <ExternalLink className="w-3.5 h-3.5 text-amber-400" />}
-                              {evt.type === 'section_read' && <FileText className="w-3.5 h-3.5 text-purple-400" />}
-                              {evt.type === 'visit' && <Globe className="w-3.5 h-3.5 text-emerald-400" />}
-                            </div>
+                          {/* Top Row: Device Header, View Count Badges, Timestamps */}
+                          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-white/5">
+                            <div className="flex items-start sm:items-center space-x-3.5">
+                              <div className="p-2.5 rounded-2xl bg-white/[0.04] border border-white/10 text-accent group-hover:border-accent/40 group-hover:scale-105 transition-all shrink-0 flex items-center justify-center">
+                                {dev.device === 'Mobile' ? (
+                                  <Globe className="w-5 h-5 text-emerald-400" />
+                                ) : (
+                                  <Laptop className="w-5 h-5 text-accent" />
+                                )}
+                              </div>
 
-                            <div className="space-y-1">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="font-bold text-white leading-snug">
-                                  {evt.description}
-                                </span>
-                                {evt.meta && (
+                              <div className="space-y-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <h4 className="font-display font-bold text-white text-base group-hover:text-accent transition-colors flex items-center space-x-2">
+                                    <span>{dev.device} · {dev.os} ({dev.browser})</span>
+                                  </h4>
+
+                                  {/* Prominent Views Count Badge */}
                                   <span
-                                    className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-medium border ${
-                                      evt.type === 'section_read'
-                                        ? 'bg-purple-500/10 border-purple-500/30 text-purple-300'
-                                        : evt.type === 'project_view'
-                                        ? 'bg-blue-500/10 border-blue-500/30 text-blue-300'
-                                        : evt.type === 'live_demo'
-                                        ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
-                                        : evt.type === 'contact_submit'
-                                        ? 'bg-accent/10 border-accent/30 text-accent'
-                                        : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                                    className={`px-3 py-1 rounded-xl font-mono text-xs font-bold flex items-center space-x-1.5 shadow-sm ${
+                                      dev.totalViews > 1
+                                        ? 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-300'
+                                        : 'bg-accent/15 border border-accent/30 text-accent'
                                     }`}
                                   >
-                                    {evt.meta}
+                                    <Eye className="w-3.5 h-3.5" />
+                                    <span>{dev.totalViews} {dev.totalViews === 1 ? 'View' : 'Total Views'}</span>
                                   </span>
-                                )}
+
+                                  {/* Visits / Sessions Badge */}
+                                  <span className="px-2.5 py-0.5 rounded-lg bg-purple-500/15 border border-purple-500/30 text-purple-300 font-mono text-[11px] font-semibold">
+                                    {dev.sessionCount > 1 ? `🔄 ${dev.sessionCount} Visits` : '✨ 1st Visit'}
+                                  </span>
+
+                                  {/* Referrer Source Badge */}
+                                  <span className="px-2.5 py-0.5 rounded-lg bg-blue-500/15 border border-blue-500/30 text-blue-400 font-mono text-[11px]">
+                                    {dev.referrer}
+                                  </span>
+
+                                  {/* Click Hint Pill */}
+                                  <span className="hidden sm:inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-lg bg-white/[0.04] border border-white/10 text-white/50 group-hover:text-white group-hover:border-accent/40 font-mono text-[10px] transition-colors">
+                                    <span>Inspect Details</span>
+                                    <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Exact Timestamps & Dwell Time */}
+                            <div className="flex flex-row md:flex-col items-start md:items-end justify-between md:justify-center shrink-0 font-mono text-xs pt-2 md:pt-0 border-t md:border-t-0 border-white/5 space-y-1">
+                              <div className="text-right">
+                                <span className="text-white/40 block text-[10px] uppercase">Latest Active</span>
+                                <span className="text-white font-semibold">{latestTime.dateStr} · {latestTime.timeStr}</span>
+                              </div>
+                              <div className="text-right">
+                                <span className="text-white/30 block text-[9px] uppercase">First Visit: {firstTime.dateStr}</span>
+                              </div>
+                              <div className="text-right">
+                                <span className="text-accent text-[11px] font-medium">⏱️ {dev.totalDuration}s total dwell</span>
                               </div>
                             </div>
                           </div>
 
-                          {/* Prominent Date & Time */}
-                          <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center border-t sm:border-t-0 border-white/5 pt-2 sm:pt-0 shrink-0 text-right">
-                            <span className="font-mono text-white/80 text-xs font-semibold">
-                              {dateStr}
-                            </span>
-                            <span className="font-mono text-accent text-[11px] font-medium">
-                              {timeStr}
-                            </span>
+                          {/* Sections & Interactive Actions Timeline for This Device */}
+                          <div className="space-y-2">
+                            {dev.sections.length > 0 && (
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="text-[11px] font-mono uppercase text-white/40 mr-1">
+                                  Sections Read:
+                                </span>
+                                {dev.sections.map((sec: string, i: number) => (
+                                  <span
+                                    key={i}
+                                    className="px-2 py-0.5 rounded-md bg-white/[0.04] border border-white/10 text-white/70 font-mono text-[11px]"
+                                  >
+                                    {sec}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+
+                            {dev.actions.length > 0 && (
+                              <div className="space-y-1.5 pt-2 border-t border-white/5">
+                                <span className="text-[11px] font-mono uppercase text-white/40 block">
+                                  Granular Activity Log:
+                                </span>
+                                <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                                  {dev.actions.map((act, i) => {
+                                    const actTime = formatDateTime(act.timestamp);
+                                    return (
+                                      <div
+                                        key={act.id || i}
+                                        className="flex items-center justify-between text-xs font-mono p-2 rounded-xl bg-black/30 border border-white/5"
+                                      >
+                                        <div className="flex items-center space-x-2 text-white/80 truncate">
+                                          <span className="w-1.5 h-1.5 rounded-full bg-accent" />
+                                          <span className="truncate">{act.description}</span>
+                                        </div>
+                                        <span className="text-white/40 shrink-0 text-[10px] ml-2">
+                                          {actTime.dateStr} · {actTime.timeStr}
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                       );
@@ -1505,10 +1672,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                 </div>
 
                 {/* Pagination Controls Bar */}
-                {totalEventPages > 1 && (
+                {totalDevicePages > 1 && (
                   <div className="p-4 rounded-2xl bg-[#181816] border border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3">
                     <span className="text-xs font-mono text-white/50">
-                      Showing {(currentPage - 1) * eventPageSize + 1}–{Math.min(currentPage * eventPageSize, filteredEvents.length)} of {filteredEvents.length} events (Page {currentPage} of {totalEventPages})
+                      Showing {(currentPage - 1) * eventPageSize + 1}–{Math.min(currentPage * eventPageSize, filteredDevices.length)} of {filteredDevices.length} devices (Page {currentPage} of {totalDevicePages})
                     </span>
 
                     <div className="flex items-center space-x-2">
@@ -1521,7 +1688,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                         <span>Prev</span>
                       </button>
 
-                      {Array.from({ length: Math.min(totalEventPages, 5) }, (_, i) => {
+                      {Array.from({ length: Math.min(totalDevicePages, 5) }, (_, i) => {
                         const pageNum = i + 1;
                         return (
                           <button
@@ -1539,8 +1706,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                       })}
 
                       <button
-                        disabled={currentPage >= totalEventPages}
-                        onClick={() => setEventPage((p) => Math.min(p + 1, totalEventPages))}
+                        disabled={currentPage >= totalDevicePages}
+                        onClick={() => setEventPage((p) => Math.min(p + 1, totalDevicePages))}
                         className="px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/10 text-xs font-mono text-white/70 hover:bg-white/10 hover:text-white disabled:opacity-30 disabled:pointer-events-none flex items-center space-x-1"
                       >
                         <span>Next</span>
@@ -1552,7 +1719,706 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
               </div>
             );
           })()}
+
+          {/* TAB 7: VISITOR FEEDBACKS (GROUPED BY DEVICE) */}
+          {activeTab === 'feedbacks' && (() => {
+            const feedbacks: VisitorFeedback[] = summary.feedbacks || [];
+
+            // Group all feedbacks strictly by Unique Device profile
+            interface DeviceFeedbackGroup {
+              id: string;
+              device: string;
+              os: string;
+              browser: string;
+              referrer: string;
+              deviceSignature: string;
+              comments: VisitorFeedback[];
+              totalComments: number;
+              latestComment: VisitorFeedback;
+              firstComment: VisitorFeedback;
+            }
+
+            const deviceGroupsMap = new Map<string, DeviceFeedbackGroup>();
+            feedbacks.forEach((fb) => {
+              const devSig = `${fb.device} · ${fb.os} (${fb.browser})`;
+              const key = `${devSig}_${fb.referrer || 'Direct'}`;
+
+              if (!deviceGroupsMap.has(key)) {
+                deviceGroupsMap.set(key, {
+                  id: key,
+                  device: fb.device,
+                  os: fb.os,
+                  browser: fb.browser,
+                  referrer: fb.referrer || 'Direct',
+                  deviceSignature: devSig,
+                  comments: [fb],
+                  totalComments: 1,
+                  latestComment: fb,
+                  firstComment: fb,
+                });
+              } else {
+                const group = deviceGroupsMap.get(key)!;
+                group.comments.push(fb);
+                group.totalComments = group.comments.length;
+                // comments are sorted latest first
+                if (new Date(fb.created_at) > new Date(group.latestComment.created_at)) {
+                  group.latestComment = fb;
+                }
+                if (new Date(fb.created_at) < new Date(group.firstComment.created_at)) {
+                  group.firstComment = fb;
+                }
+              }
+            });
+
+            const deviceGroups = Array.from(deviceGroupsMap.values());
+
+            // Filter device groups based on search and device category
+            const filteredGroups = deviceGroups.filter((group) => {
+              const matchesCategory =
+                feedbackDeviceFilter === 'all' ||
+                group.deviceSignature.toLowerCase().includes(feedbackDeviceFilter.toLowerCase()) ||
+                group.device.toLowerCase() === feedbackDeviceFilter.toLowerCase() ||
+                group.os.toLowerCase() === feedbackDeviceFilter.toLowerCase();
+
+              const search = feedbackSearch.toLowerCase();
+              const matchesSearch =
+                !search ||
+                group.deviceSignature.toLowerCase().includes(search) ||
+                group.referrer.toLowerCase().includes(search) ||
+                group.comments.some(
+                  (c) =>
+                    c.name.toLowerCase().includes(search) ||
+                    c.message.toLowerCase().includes(search) ||
+                    c.rating.toLowerCase().includes(search) ||
+                    (c.email && c.email.toLowerCase().includes(search))
+                );
+
+              return matchesCategory && matchesSearch;
+            });
+
+            const formatFbDate = (iso: string) => {
+              try {
+                const d = new Date(iso);
+                const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+                const timeStr = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+                return { dateStr, timeStr };
+              } catch {
+                return { dateStr: 'Recent', timeStr: iso };
+              }
+            };
+
+            return (
+              <div className="space-y-6">
+                {/* Header & Overview */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 sm:p-8 rounded-3xl bg-[#141413] border border-white/10 shadow-xl">
+                  <div className="space-y-1">
+                    <div className="flex items-center space-x-3">
+                      <div className="p-2.5 rounded-2xl bg-accent/20 border border-accent/30 text-accent">
+                        <MessageSquare className="w-5 h-5" />
+                      </div>
+                      <h2 className="text-xl sm:text-2xl font-bold font-display text-white">
+                        Visitor Feedbacks by Device
+                      </h2>
+                    </div>
+                    <p className="text-xs font-sans text-white/60">
+                      All feedback submitted by external visitors, grouped by each device profile. Click any device to see all comments from that device.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center space-x-3">
+                    <div className="px-4 py-2 rounded-2xl bg-white/[0.04] border border-white/10 text-center font-mono">
+                      <span className="block text-[10px] uppercase tracking-wider text-white/40">Total Comments</span>
+                      <span className="text-lg font-bold text-accent font-display">{feedbacks.length}</span>
+                    </div>
+                    <div className="px-4 py-2 rounded-2xl bg-white/[0.04] border border-white/10 text-center font-mono">
+                      <span className="block text-[10px] uppercase tracking-wider text-white/40">Unique Devices</span>
+                      <span className="text-lg font-bold text-emerald-400 font-display">{deviceGroups.length}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Device Filter Bar */}
+                <div className="space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    {/* Device Category Pills */}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        onClick={() => setFeedbackDeviceFilter('all')}
+                        className={`px-3.5 py-1.5 rounded-xl font-mono text-xs font-semibold transition-all ${
+                          feedbackDeviceFilter === 'all'
+                            ? 'bg-accent text-white shadow-md'
+                            : 'bg-white/[0.04] text-white/60 hover:text-white hover:bg-white/10 border border-white/5'
+                        }`}
+                      >
+                        All Devices ({deviceGroups.length})
+                      </button>
+
+                      {['Desktop', 'Mobile', 'Windows', 'Android', 'macOS', 'Linux'].map((cat) => {
+                        const count = deviceGroups.filter((g) =>
+                          g.deviceSignature.toLowerCase().includes(cat.toLowerCase())
+                        ).length;
+                        if (count === 0) return null;
+
+                        return (
+                          <button
+                            key={cat}
+                            onClick={() => setFeedbackDeviceFilter(cat)}
+                            className={`px-3.5 py-1.5 rounded-xl font-mono text-xs transition-all flex items-center space-x-1.5 ${
+                              feedbackDeviceFilter.toLowerCase() === cat.toLowerCase()
+                                ? 'bg-accent text-white font-semibold shadow-md'
+                                : 'bg-white/[0.04] text-white/60 hover:text-white hover:bg-white/10 border border-white/5'
+                            }`}
+                          >
+                            {cat === 'Mobile' || cat === 'Android' ? (
+                              <Globe className="w-3.5 h-3.5 text-emerald-400" />
+                            ) : (
+                              <Laptop className="w-3.5 h-3.5 text-accent" />
+                            )}
+                            <span>{cat}</span>
+                            <span className="px-1.5 py-0.2 rounded-full bg-white/10 text-[10px]">
+                              {count}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Search Field */}
+                    <div className="relative w-full sm:w-64">
+                      <Search className="w-3.5 h-3.5 text-white/40 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        value={feedbackSearch}
+                        onChange={(e) => setFeedbackSearch(e.target.value)}
+                        placeholder="Search feedback / device / text..."
+                        className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-black/40 border border-white/10 focus:border-accent focus:outline-none text-xs font-mono text-white transition-colors"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Device Cards Grid */}
+                {filteredGroups.length === 0 ? (
+                  <div className="p-12 rounded-3xl bg-[#141413] border border-white/10 text-center space-y-3">
+                    <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 text-white/40 mx-auto flex items-center justify-center">
+                      <MessageSquare className="w-6 h-6" />
+                    </div>
+                    <h3 className="font-display font-bold text-white text-lg">No visitor feedback found</h3>
+                    <p className="text-xs text-white/50 max-w-md mx-auto">
+                      {feedbackSearch || feedbackDeviceFilter !== 'all'
+                        ? 'No devices match your search query or filter.'
+                        : 'No visitor feedback has been submitted yet.'}
+                    </p>
+                    {(feedbackSearch || feedbackDeviceFilter !== 'all') && (
+                      <button
+                        onClick={() => {
+                          setFeedbackSearch('');
+                          setFeedbackDeviceFilter('all');
+                        }}
+                        className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-mono text-white transition-colors"
+                      >
+                        Reset Filters
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {filteredGroups.map((group) => {
+                      const latest = group.latestComment;
+                      const dt = formatFbDate(latest.created_at);
+                      const isMobile = group.device.toLowerCase().includes('mobile');
+
+                      return (
+                        <div
+                          key={group.id}
+                          onClick={() => setSelectedFeedbackDevice(group)}
+                          className="p-5 sm:p-6 rounded-3xl bg-[#141413] border border-white/10 hover:border-accent/40 hover:bg-[#181816] transition-all duration-200 flex flex-col justify-between space-y-4 shadow-lg group cursor-pointer"
+                        >
+                          {/* Top Row: Device Signature & Comments Count Badge */}
+                          <div className="flex items-start justify-between gap-3 pb-3 border-b border-white/5">
+                            <div className="flex items-center space-x-3">
+                              <div className="p-2.5 rounded-2xl bg-white/[0.04] border border-white/10 text-accent group-hover:border-accent/40 group-hover:scale-105 transition-all shrink-0">
+                                {isMobile ? (
+                                  <Globe className="w-5 h-5 text-emerald-400" />
+                                ) : (
+                                  <Laptop className="w-5 h-5 text-accent" />
+                                )}
+                              </div>
+                              <div>
+                                <div className="flex items-center space-x-2">
+                                  <h4 className="font-display font-bold text-white text-base group-hover:text-accent transition-colors">
+                                    {group.device} · {group.os}
+                                  </h4>
+                                  <span className="px-2 py-0.5 rounded-md bg-white/[0.04] text-white/60 font-mono text-[11px]">
+                                    {group.browser}
+                                  </span>
+                                </div>
+                                <span className="text-[11px] font-mono text-white/40 block mt-0.5">
+                                  Via {group.referrer}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Comments Count Badge */}
+                            <div className="flex flex-col items-end">
+                              <span className="px-3 py-1 rounded-xl bg-accent/15 border border-accent/30 text-accent font-mono text-xs font-bold shadow-sm">
+                                💬 {group.totalComments} {group.totalComments === 1 ? 'Comment' : 'Comments'}
+                              </span>
+                              <span className="text-[10px] font-mono text-white/40 mt-1">
+                                Latest: {dt.dateStr}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Middle: Latest Comment Excerpt */}
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between gap-2 flex-wrap">
+                              <div className="flex items-center space-x-2">
+                                <span className="inline-flex items-center space-x-1.5 px-3 py-0.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 font-mono text-xs font-bold">
+                                  <span>{latest.rating}</span>
+                                </span>
+                                <span className="px-2.5 py-0.5 rounded-lg bg-purple-500/20 border border-purple-500/40 text-purple-300 font-mono text-[11px] font-semibold">
+                                  💼 {latest.role || 'Visitor'}
+                                </span>
+                              </div>
+
+                              <span className="font-mono text-xs text-white/80">
+                                👤 {latest.name}
+                              </span>
+                            </div>
+
+                            {/* Message Quote Box */}
+                            <div className="p-3.5 rounded-2xl bg-black/40 border border-white/5 text-xs text-white/90 leading-relaxed font-sans italic line-clamp-2">
+                              &ldquo;{latest.message}&rdquo;
+                            </div>
+                          </div>
+
+                          {/* Bottom Row: Drilldown Prompt */}
+                          <div className="flex items-center justify-between pt-2 border-t border-white/5 text-xs font-mono">
+                            <span className="text-accent group-hover:underline flex items-center space-x-1 font-semibold">
+                              <span>View All {group.totalComments} Comments from this Device</span>
+                              <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                            </span>
+                            <span className="text-white/40 text-[10px]">
+                              {dt.timeStr}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </main>
+
+        {/* COMPREHENSIVE DEVICE DETAIL ANALYTICS MODAL */}
+        {selectedDevice && (() => {
+          const dev = selectedDevice;
+          const formatModalDate = (iso: string) => {
+            try {
+              const d = new Date(iso);
+              const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+              const timeStr = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+              return { dateStr, timeStr };
+            } catch {
+              return { dateStr: 'Recent', timeStr: iso };
+            }
+          };
+
+          const firstVisit = formatModalDate(dev.firstSeen);
+          const lastVisit = formatModalDate(dev.lastSeen);
+          const sessionsList = dev.sessions && dev.sessions.length > 0 ? dev.sessions : [];
+
+          return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+              <div className="relative w-full max-w-4xl max-h-[92vh] flex flex-col rounded-3xl bg-[#141413] border border-white/15 shadow-2xl overflow-hidden text-white">
+                {/* Modal Header */}
+                <div className="p-6 sm:p-7 border-b border-white/10 flex items-start sm:items-center justify-between gap-4 bg-[#181816]">
+                  <div className="flex items-center space-x-3.5">
+                    <div className="p-3 rounded-2xl bg-white/[0.06] border border-white/10 text-accent shrink-0">
+                      {dev.device === 'Mobile' ? (
+                        <Globe className="w-6 h-6 text-emerald-400" />
+                      ) : (
+                        <Laptop className="w-6 h-6 text-accent" />
+                      )}
+                    </div>
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="font-display text-xl sm:text-2xl font-bold text-white">
+                          {dev.device} · {dev.os} ({dev.browser})
+                        </h3>
+                        <span className="px-2.5 py-0.5 rounded-full bg-blue-500/15 border border-blue-500/30 text-blue-400 font-mono text-xs">
+                          {dev.referrer} Source
+                        </span>
+                      </div>
+                      <p className="text-xs font-mono text-white/50 mt-1">
+                        Visitor Device Signature: <span className="text-white/80">{dev.visitorId}</span>
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => setSelectedDevice(null)}
+                    className="w-9 h-9 rounded-2xl bg-white/[0.05] hover:bg-white/10 border border-white/10 flex items-center justify-center text-white/60 hover:text-white transition-colors shrink-0"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* Modal Content Scroll Area */}
+                <div className="p-6 sm:p-8 overflow-y-auto space-y-8">
+                  {/* 1. Key Metrics Strip (4 Hero KPI Cards) */}
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="p-4 sm:p-5 rounded-2xl bg-white/[0.03] border border-white/10 space-y-1">
+                      <div className="flex items-center space-x-1.5 text-accent font-mono text-xs font-bold">
+                        <Calendar className="w-3.5 h-3.5" />
+                        <span>First Visit (Origin)</span>
+                      </div>
+                      <div className="text-white font-bold text-sm sm:text-base font-display">
+                        {firstVisit.dateStr}
+                      </div>
+                      <div className="text-white/50 text-xs font-mono">
+                        {firstVisit.timeStr}
+                      </div>
+                    </div>
+
+                    <div className="p-4 sm:p-5 rounded-2xl bg-white/[0.03] border border-white/10 space-y-1">
+                      <div className="flex items-center space-x-1.5 text-emerald-400 font-mono text-xs font-bold">
+                        <Clock className="w-3.5 h-3.5" />
+                        <span>Last Active Visit</span>
+                      </div>
+                      <div className="text-white font-bold text-sm sm:text-base font-display">
+                        {lastVisit.dateStr}
+                      </div>
+                      <div className="text-white/50 text-xs font-mono">
+                        {lastVisit.timeStr}
+                      </div>
+                    </div>
+
+                    <div className="p-4 sm:p-5 rounded-2xl bg-white/[0.03] border border-white/10 space-y-1">
+                      <div className="flex items-center space-x-1.5 text-purple-400 font-mono text-xs font-bold">
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>Total Pageviews</span>
+                      </div>
+                      <div className="text-white font-bold text-xl font-display">
+                        {dev.totalViews} <span className="text-xs font-normal text-white/50">views</span>
+                      </div>
+                      <div className="text-white/50 text-xs font-mono">
+                        Across {dev.sessionCount} session{dev.sessionCount === 1 ? '' : 's'}
+                      </div>
+                    </div>
+
+                    <div className="p-4 sm:p-5 rounded-2xl bg-white/[0.03] border border-white/10 space-y-1">
+                      <div className="flex items-center space-x-1.5 text-amber-400 font-mono text-xs font-bold">
+                        <Activity className="w-3.5 h-3.5" />
+                        <span>Total Dwell Time</span>
+                      </div>
+                      <div className="text-white font-bold text-xl font-display">
+                        {dev.totalDuration}s
+                      </div>
+                      <div className="text-white/50 text-xs font-mono">
+                        ~{Math.round(dev.totalDuration / Math.max(dev.sessionCount, 1))}s avg / visit
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 2. Chronological Breakdown of Each Individual Visit */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between pb-2 border-b border-white/10">
+                      <h4 className="font-display font-bold text-white text-lg flex items-center space-x-2">
+                        <span>🗓️ Chronological Visit History (Each Visit Date &amp; Time)</span>
+                      </h4>
+                      <span className="text-xs font-mono text-white/50">
+                        {sessionsList.length > 0 ? `${sessionsList.length} Recorded Sessions` : 'Aggregated Telemetry Session'}
+                      </span>
+                    </div>
+
+                    {sessionsList.length === 0 ? (
+                      <div className="p-4 rounded-2xl bg-black/30 border border-white/5 text-xs font-mono text-white/60 space-y-2">
+                        <p><strong>Primary Visit Session:</strong> {firstVisit.dateStr} at {firstVisit.timeStr}</p>
+                        <p><strong>Latest Activity:</strong> {lastVisit.dateStr} at {lastVisit.timeStr}</p>
+                        <p><strong>Total Views:</strong> {dev.totalViews} Pageviews &middot; <strong>Dwell:</strong> {dev.totalDuration}s</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {sessionsList.map((ses: any, sIdx: number) => {
+                          const sTime = formatModalDate(ses.timestamp);
+                          const visitNumber = sessionsList.length - sIdx;
+
+                          return (
+                            <div
+                              key={ses.id || sIdx}
+                              className="p-4 sm:p-5 rounded-2xl bg-white/[0.02] border border-white/10 hover:border-white/20 transition-all space-y-3"
+                            >
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-white/5">
+                                <div className="flex items-center space-x-2.5">
+                                  <span className={`px-2.5 py-0.5 rounded-lg font-mono text-xs font-bold ${
+                                    visitNumber === 1
+                                      ? 'bg-accent/20 border border-accent/40 text-accent'
+                                      : 'bg-purple-500/20 border border-purple-500/40 text-purple-300'
+                                  }`}>
+                                    {visitNumber === 1 ? '✨ Visit #1 (Origin)' : `🔄 Visit #${visitNumber}`}
+                                  </span>
+                                  <span className="font-mono text-xs text-white font-semibold">
+                                    {sTime.dateStr} · {sTime.timeStr}
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center space-x-3 font-mono text-xs text-white/60">
+                                  <span>👁️ {ses.pageViews || 1} Views</span>
+                                  <span>⏱️ {ses.duration || 1}s Dwell</span>
+                                  <span className="px-2 py-0.5 rounded bg-white/[0.04] text-white/50">{ses.referrer || dev.referrer}</span>
+                                </div>
+                              </div>
+
+                              {/* Sections in this visit */}
+                              {ses.sectionsViewed && ses.sectionsViewed.length > 0 && (
+                                <div className="flex flex-wrap items-center gap-1.5 text-xs font-mono">
+                                  <span className="text-white/40 text-[11px] uppercase mr-1">Sections Explored:</span>
+                                  {ses.sectionsViewed.map((sc: string, sci: number) => (
+                                    <span
+                                      key={sci}
+                                      className="px-2 py-0.5 rounded bg-white/[0.04] border border-white/10 text-white/80 text-[11px]"
+                                    >
+                                      {sc}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+
+                              {/* Project interactions in this visit */}
+                              {ses.projectInteractions && ses.projectInteractions.length > 0 && (
+                                <div className="space-y-1 text-xs font-mono pt-1">
+                                  <span className="text-accent text-[11px] uppercase block">Project Actions:</span>
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {ses.projectInteractions.map((pi: any, pii: number) => (
+                                      <span
+                                        key={pii}
+                                        className="px-2 py-0.5 rounded bg-accent/10 border border-accent/30 text-accent text-[11px]"
+                                      >
+                                        {pi.action === 'view_modal' ? '🔍 Demo Preview' : pi.action === 'live_demo' ? '🚀 Live Launch' : '🐙 GitHub'}: {pi.projectId}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 3. All Sections Explored Across Lifetime */}
+                  {dev.sections.length > 0 && (
+                    <div className="space-y-3">
+                      <h4 className="font-display font-bold text-white text-base">
+                        🧭 All Sections Explored Across All Visits
+                      </h4>
+                      <div className="flex flex-wrap gap-2">
+                        {dev.sections.map((sec: string, i: number) => (
+                          <div
+                            key={i}
+                            className="px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-mono text-xs flex items-center space-x-1.5"
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full bg-accent" />
+                            <span>{sec}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 4. Complete Chronological Granular Activity Ledger */}
+                  {dev.actions.length > 0 && (
+                    <div className="space-y-3">
+                      <h4 className="font-display font-bold text-white text-base">
+                        ⚡ Granular Event Log &amp; Interactions Stream
+                      </h4>
+                      <div className="space-y-2 max-h-56 overflow-y-auto pr-2">
+                        {dev.actions.map((act: any, i: number) => {
+                          const actTime = formatModalDate(act.timestamp);
+                          return (
+                            <div
+                              key={act.id || i}
+                              className="flex items-center justify-between text-xs font-mono p-2.5 rounded-xl bg-black/40 border border-white/5 hover:border-white/10 transition-colors"
+                            >
+                              <div className="flex items-center space-x-2 text-white/90">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                                <span>{act.description}</span>
+                              </div>
+                              <span className="text-white/40 shrink-0 text-[11px] ml-3">
+                                {actTime.dateStr} · {actTime.timeStr}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Modal Footer */}
+                <div className="p-4 sm:p-5 border-t border-white/10 bg-[#181816] flex items-center justify-between">
+                  <span className="text-xs font-mono text-white/50">
+                    Live Supabase Telemetry &middot; Dynamic External Device Analytics
+                  </span>
+                  <button
+                    onClick={() => setSelectedDevice(null)}
+                    className="px-5 py-2 rounded-xl bg-white/[0.08] hover:bg-white/15 text-xs font-mono font-semibold text-white transition-colors"
+                  >
+                    Close Analytics
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* COMPREHENSIVE DEVICE FEEDBACK & COMMENTS MODAL */}
+        {selectedFeedbackDevice && (() => {
+          const dev = selectedFeedbackDevice;
+          const comments: VisitorFeedback[] = (summary.feedbacks || []).filter(
+            (f) =>
+              `${f.device} · ${f.os} (${f.browser})_${f.referrer || 'Direct'}` === dev.id ||
+              (`${f.device} · ${f.os}` === `${dev.device} · ${dev.os}` && f.browser === dev.browser)
+          );
+
+          const formatFbModalDate = (iso: string) => {
+            try {
+              const d = new Date(iso);
+              const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+              const timeStr = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+              return { dateStr, timeStr };
+            } catch {
+              return { dateStr: 'Recent', timeStr: iso };
+            }
+          };
+
+          const isMobile = dev.device.toLowerCase().includes('mobile');
+
+          return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+              <div className="relative w-full max-w-3xl max-h-[90vh] flex flex-col rounded-3xl bg-[#141413] border border-white/15 shadow-2xl overflow-hidden text-white">
+                {/* Modal Header */}
+                <div className="p-6 sm:p-7 border-b border-white/10 flex items-start sm:items-center justify-between gap-4 bg-[#181816]">
+                  <div className="flex items-center space-x-3.5">
+                    <div className="p-3 rounded-2xl bg-white/[0.06] border border-white/10 text-accent shrink-0">
+                      {isMobile ? (
+                        <Globe className="w-6 h-6 text-emerald-400" />
+                      ) : (
+                        <Laptop className="w-6 h-6 text-accent" />
+                      )}
+                    </div>
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="font-display text-xl sm:text-2xl font-bold text-white">
+                          {dev.device} · {dev.os} ({dev.browser})
+                        </h3>
+                        <span className="px-2.5 py-0.5 rounded-full bg-blue-500/15 border border-blue-500/30 text-blue-400 font-mono text-xs">
+                          {dev.referrer} Source
+                        </span>
+                      </div>
+                      <p className="text-xs font-mono text-white/50 mt-1">
+                        Device Comments History &middot; <span className="text-accent font-semibold">{comments.length} Total Comments</span>
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => setSelectedFeedbackDevice(null)}
+                    className="p-2.5 rounded-2xl bg-white/5 hover:bg-white/15 text-white/60 hover:text-white transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Modal Body: All Comments from this Device */}
+                <div className="flex-1 overflow-y-auto p-6 sm:p-7 space-y-4">
+                  {comments.length === 0 ? (
+                    <div className="p-8 rounded-2xl bg-white/[0.02] border border-white/10 text-center text-white/50 font-mono text-xs">
+                      All feedback records from this device have been deleted.
+                    </div>
+                  ) : (
+                    comments.map((c, cIdx) => {
+                      const dt = formatFbModalDate(c.created_at);
+                      const commentNumber = comments.length - cIdx;
+
+                      return (
+                        <div
+                          key={c.id}
+                          className="p-5 sm:p-6 rounded-2xl bg-[#181816] border border-white/10 hover:border-white/20 transition-all space-y-3"
+                        >
+                          {/* Top Row: Feedback # & Rating & Timestamp */}
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-white/5">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="px-2.5 py-0.5 rounded-lg bg-accent/20 border border-accent/40 text-accent font-mono text-xs font-bold">
+                                Comment #{commentNumber}
+                              </span>
+                              <span className="px-2.5 py-0.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-300 font-mono text-xs font-bold">
+                                {c.rating}
+                              </span>
+                              <span className="font-mono text-xs text-white/80 font-medium">
+                                👤 {c.name}
+                              </span>
+                              <span className="px-2.5 py-0.5 rounded-lg bg-purple-500/20 border border-purple-500/40 text-purple-300 font-mono text-xs font-semibold">
+                                💼 {c.role || 'Visitor'}
+                              </span>
+                            </div>
+
+                            <div className="text-right font-mono text-xs text-white/60">
+                              <span>{dt.dateStr} · {dt.timeStr}</span>
+                            </div>
+                          </div>
+
+                          {/* Message Box */}
+                          <div className="p-4 rounded-2xl bg-black/40 border border-white/5 text-sm text-white/90 leading-relaxed font-sans italic">
+                            &ldquo;{c.message}&rdquo;
+                          </div>
+
+                          {/* Bottom Row: Actions */}
+                          <div className="flex items-center justify-between pt-1 text-xs font-mono text-white/40">
+                            <span className="text-[11px]">
+                              Supabase UUID: {c.id}
+                            </span>
+
+                            <button
+                              onClick={async () => {
+                                await handleDeleteFeedback(c.id);
+                                const rem = comments.filter((item) => item.id !== c.id);
+                                if (rem.length === 0) setSelectedFeedbackDevice(null);
+                              }}
+                              className="px-3 py-1.5 rounded-xl text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors flex items-center space-x-1"
+                              title="Delete this comment record"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span className="text-xs">Delete</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                {/* Modal Footer */}
+                <div className="p-4 sm:p-5 border-t border-white/10 bg-[#181816] flex items-center justify-between">
+                  <span className="text-xs font-mono text-white/50">
+                    Live Supabase Telemetry &middot; Dynamic Device Comments Ledger
+                  </span>
+                  <button
+                    onClick={() => setSelectedFeedbackDevice(null)}
+                    className="px-5 py-2 rounded-xl bg-white/[0.08] hover:bg-white/15 text-xs font-mono font-semibold text-white transition-colors"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );

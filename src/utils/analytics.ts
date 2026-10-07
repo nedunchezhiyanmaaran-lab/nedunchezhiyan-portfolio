@@ -2,6 +2,8 @@ import { db, type SupabaseLead, type SupabaseSession, type SupabaseEvent } from 
 
 export interface VisitorSession {
   id: string;
+  visitorId?: string;
+  visitCount?: number;
   timestamp: string; // ISO
   duration: number; // in seconds
   referrer: string;
@@ -42,6 +44,20 @@ export interface DailyDataPoint {
   projectClicks: number;
 }
 
+export interface VisitorFeedback {
+  id: string;
+  name: string;
+  role?: string;
+  email?: string;
+  rating: string;
+  message: string;
+  device: string;
+  os: string;
+  browser: string;
+  referrer: string;
+  created_at: string;
+}
+
 export interface AnalyticsSummary {
   totalVisitors: number;
   totalPageViews: number;
@@ -71,11 +87,14 @@ export interface AnalyticsSummary {
     meta?: string;
   }[];
   leads: LeadSubmission[];
+  feedbacks: VisitorFeedback[];
+  sessions: VisitorSession[];
 }
 
 const STORAGE_KEYS = {
   SESSIONS: 'nedun_live_sessions_v2',
   LEADS: 'nedun_live_leads_v2',
+  FEEDBACKS: 'nedun_live_feedbacks_v2',
   CURRENT_SESSION: 'nedun_current_session_id_v2',
   EVENTS: 'nedun_live_events_v2',
 };
@@ -187,6 +206,20 @@ const detectEnvironment = () => {
 
 // Initialize visitor tracking (Real session only)
 export const initVisitorTracking = () => {
+  // 1. Persistent device / visitor identity
+  let visitorId = localStorage.getItem('nedun_persistent_visitor_id');
+  let isFirstVisit = false;
+  let visitCount = 1;
+
+  if (!visitorId) {
+    visitorId = `vis_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    localStorage.setItem('nedun_persistent_visitor_id', visitorId);
+    localStorage.setItem('nedun_visitor_visits_count', '1');
+    isFirstVisit = true;
+  } else {
+    visitCount = Number(localStorage.getItem('nedun_visitor_visits_count') || '1');
+  }
+
   let sessionId = sessionStorage.getItem(STORAGE_KEYS.CURRENT_SESSION);
   const now = new Date().toISOString();
 
@@ -194,9 +227,16 @@ export const initVisitorTracking = () => {
     sessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
     sessionStorage.setItem(STORAGE_KEYS.CURRENT_SESSION, sessionId);
 
+    if (!isFirstVisit) {
+      visitCount += 1;
+      localStorage.setItem('nedun_visitor_visits_count', String(visitCount));
+    }
+
     const env = detectEnvironment();
     const newSession: VisitorSession = {
       id: sessionId,
+      visitorId: visitorId,
+      visitCount: visitCount,
       timestamp: now,
       duration: 1,
       referrer: env.referrer,
@@ -206,7 +246,7 @@ export const initVisitorTracking = () => {
       browser: env.browser,
       os: env.os,
       country: env.isOwner ? 'India (Owner Device)' : 'Live Visitor',
-      city: env.isOwner ? 'Nedun Laptop' : 'Client Session',
+      city: env.isOwner ? 'Nedun Laptop' : (isFirstVisit ? 'Client Session' : `Client Session (Visit #${visitCount})`),
       pageViews: 1,
       sectionsViewed: ['hero'],
       projectInteractions: [],
@@ -232,7 +272,13 @@ export const initVisitorTracking = () => {
       project_interactions: newSession.projectInteractions,
     });
 
-    logAnalyticsEvent('visit', `${env.isOwner ? '👑 Owner Laptop' : 'Visitor'} connected from ${env.referrer} (${env.os} / ${env.browser})`);
+    if (env.isOwner) {
+      logAnalyticsEvent('visit', `👑 Owner Laptop connected from ${env.referrer} (${env.os} / ${env.browser})`);
+    } else if (isFirstVisit) {
+      logAnalyticsEvent('visit', `👤 First-time Visitor connected from ${env.referrer} (${env.os} / ${env.browser})`);
+    } else {
+      logAnalyticsEvent('visit', `🔄 Returning Visitor (Visit #${visitCount}) connected from ${env.referrer} (${env.os} / ${env.browser})`);
+    }
   }
 
   // Heartbeat session timer
@@ -465,6 +511,69 @@ export const deleteLead = async (id: string) => {
   }
 };
 
+export const submitVisitorFeedback = async (feedback: {
+  name?: string;
+  role?: string;
+  email?: string;
+  rating: string;
+  message: string;
+}): Promise<boolean> => {
+  const env = detectEnvironment();
+  const visitorId = typeof localStorage !== 'undefined' ? localStorage.getItem('nedun_persistent_visitor_id') || 'anon' : 'anon';
+  const cleanRole = feedback.role?.trim() || '';
+
+  try {
+    const remote = await db.submitFeedback({
+      name: feedback.name?.trim() || 'Anonymous Visitor',
+      role: cleanRole,
+      email: feedback.email?.trim() || '',
+      rating: feedback.rating,
+      message: feedback.message.trim(),
+      device: env.device,
+      os: env.os,
+      browser: env.browser,
+      referrer: env.referrer,
+      visitorId,
+    });
+
+    const newFeedback: VisitorFeedback = remote || {
+      id: `fb_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      name: feedback.name?.trim() || 'Anonymous Visitor',
+      role: cleanRole || 'Visitor',
+      email: feedback.email?.trim() || '',
+      rating: feedback.rating,
+      message: feedback.message.trim(),
+      device: env.device,
+      os: env.os,
+      browser: env.browser,
+      referrer: env.referrer,
+      created_at: new Date().toISOString(),
+    };
+
+    const list: VisitorFeedback[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.FEEDBACKS) || '[]');
+    const cleanList = list.filter((f) => f.id !== newFeedback.id && !(f.id.startsWith('fb_') && f.message === newFeedback.message));
+    cleanList.unshift(newFeedback);
+    localStorage.setItem(STORAGE_KEYS.FEEDBACKS, JSON.stringify(cleanList));
+
+    logAnalyticsEvent('contact_submit', `💬 Visitor Feedback (${newFeedback.rating}): "${newFeedback.message.substring(0, 40)}..."`, `${newFeedback.device} · ${newFeedback.os}`);
+    return true;
+  } catch (err) {
+    console.warn('Feedback submit fallback:', err);
+    return false;
+  }
+};
+
+export const deleteVisitorFeedback = async (id: string) => {
+  try {
+    const list: VisitorFeedback[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.FEEDBACKS) || '[]');
+    const filtered = list.filter((f) => f.id !== id);
+    localStorage.setItem(STORAGE_KEYS.FEEDBACKS, JSON.stringify(filtered));
+    await db.deleteFeedback(id);
+  } catch (e) {
+    console.error(e);
+  }
+};
+
 export const logAnalyticsEvent = (
   type: AnalyticsSummary['recentEvents'][0]['type'],
   description: string,
@@ -487,15 +596,16 @@ export const logAnalyticsEvent = (
   }
 };
 
-// Sync Supabase Leads, Sessions, and Events into Local State (Robust 2-way Merge)
-export const syncSupabaseData = async (): Promise<{ leads: LeadSubmission[]; sessions: VisitorSession[] }> => {
+// Sync Supabase Leads, Feedbacks, Sessions, and Events into Local State (Robust 2-way Merge)
+export const syncSupabaseData = async (): Promise<{ leads: LeadSubmission[]; sessions: VisitorSession[]; feedbacks: VisitorFeedback[] }> => {
   const localLeads: LeadSubmission[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.LEADS) || '[]');
 
   try {
-    const [remoteLeadsRes, remoteSessionsRes, remoteEventsRes] = await Promise.allSettled([
+    const [remoteLeadsRes, remoteSessionsRes, remoteEventsRes, remoteFeedbacksRes] = await Promise.allSettled([
       db.getLeads(),
       db.getSessions(200),
       db.getEvents(250),
+      db.getFeedbacks(),
     ]);
 
     // 1. Process Leads
@@ -503,10 +613,8 @@ export const syncSupabaseData = async (): Promise<{ leads: LeadSubmission[]; ses
       const remoteLeads = remoteLeadsRes.value;
       const leadMap = new Map<string, LeadSubmission>();
 
-      // Keep local leads
       localLeads.forEach((l) => leadMap.set(l.id, l));
 
-      // Merge remote leads
       remoteLeads.forEach((r: SupabaseLead) => {
         leadMap.set(r.id, {
           id: r.id,
@@ -528,6 +636,12 @@ export const syncSupabaseData = async (): Promise<{ leads: LeadSubmission[]; ses
       localStorage.setItem(STORAGE_KEYS.LEADS, JSON.stringify(mergedLeads));
     }
 
+    // 1b. Process Visitor Feedbacks directly from Supabase (Zero Duplicates)
+    if (remoteFeedbacksRes.status === 'fulfilled' && Array.isArray(remoteFeedbacksRes.value)) {
+      const remoteFeedbacks = remoteFeedbacksRes.value;
+      localStorage.setItem(STORAGE_KEYS.FEEDBACKS, JSON.stringify(remoteFeedbacks));
+    }
+
     // 2. Process Sessions
     if (remoteSessionsRes.status === 'fulfilled' && Array.isArray(remoteSessionsRes.value) && remoteSessionsRes.value.length > 0) {
       const remoteSessions = remoteSessionsRes.value;
@@ -537,13 +651,14 @@ export const syncSupabaseData = async (): Promise<{ leads: LeadSubmission[]; ses
       const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
       remoteSessions.forEach((s: SupabaseSession) => {
-        // Accurately tag owner sessions from localhost, device name, or location metadata
+        // Accurately tag owner sessions from localhost current session ID, device name, or location metadata
         const isOwner = Boolean(
           (isLocalhost && s.id === currentSessionId) ||
           s.country?.includes('Owner Device') ||
+          s.country?.includes('Owner') ||
           s.city?.includes('Nedun Laptop') ||
-          (s.device && s.device.includes('Nedunchezhiyan')) ||
-          (isLocalhost && s.device === 'Desktop' && s.os === 'Windows' && s.referrer === 'Direct')
+          s.city?.includes('Nedun') ||
+          (s.device && (s.device.includes('Nedunchezhiyan') || s.device.includes('Owner')))
         );
 
         sessionMap.set(s.id, {
@@ -570,41 +685,56 @@ export const syncSupabaseData = async (): Promise<{ leads: LeadSubmission[]; ses
       localStorage.setItem(STORAGE_KEYS.SESSIONS, JSON.stringify(mergedSessions));
     }
 
-    // 3. Process Events
+    // 3. Process Events (Strictly keep only genuine external events, filter out all owner/laptop test events)
     if (remoteEventsRes.status === 'fulfilled' && Array.isArray(remoteEventsRes.value) && remoteEventsRes.value.length > 0) {
       const remoteEvents = remoteEventsRes.value;
-      const mappedEvents = remoteEvents.map((e: SupabaseEvent) => {
-        let desc = e.description
-          .replace('👑 Owner Laptop connected from LinkedIn', '👥 LinkedIn Visitor connected')
-          .replace('👑 Owner Laptop connected from www.reddit.com', '👥 Reddit Visitor connected')
-          .replace('👑 Owner Laptop connected from Direct (macOS / Safari)', '👥 Safari macOS Visitor connected')
-          .replace('👑 Owner Laptop connected from Direct (Linux / Chrome)', '👥 Linux Chrome Visitor connected')
-          .replace('👑 Owner Laptop connected from Direct (Android / Chrome)', '👥 Android Visitor connected')
-          .replace('👑 Owner Laptop connected from vercel.com', '👥 Vercel Referral connected')
-          .replace('Viewed Section: CONTACT', 'Read 05 · Studio Inquiry & Contact')
-          .replace('Viewed Section: PROCESS', 'Read 04 · 6-Phase Engineering Process')
-          .replace('Viewed Section: ABOUT', 'Read 03 · Architecture & Philosophy')
-          .replace('Viewed Section: WORK', 'Read 01 · Selected Work & Projects')
-          .replace('Viewed Section: SERVICES', 'Read 02 · Engineering Capabilities');
+      const externalOnlyEvents = remoteEvents
+        .filter((e: SupabaseEvent) => {
+          const desc = (e.description || '').toLowerCase();
+          const meta = (e.meta || '').toLowerCase();
+          const isOwner =
+            desc.includes('owner') ||
+            desc.includes('👑') ||
+            desc.includes('laptop') ||
+            desc.includes('whitelisted') ||
+            desc.includes('simulated') ||
+            desc.includes('nedun') ||
+            desc.includes('chezhiyan') ||
+            desc.includes('chezhiyancdurai') ||
+            meta.includes('owner') ||
+            meta.includes('👑') ||
+            meta.includes('laptop') ||
+            meta.includes('nedun') ||
+            meta.includes('chezhiyan');
+          return !isOwner;
+        })
+        .map((e: SupabaseEvent) => {
+          let desc = e.description
+            .replace('Viewed Section: CONTACT', 'Read 05 · Studio Inquiry & Contact')
+            .replace('Viewed Section: PROCESS', 'Read 04 · 6-Phase Engineering Process')
+            .replace('Viewed Section: ABOUT', 'Read 03 · Architecture & Philosophy')
+            .replace('Viewed Section: WORK', 'Read 01 · Selected Work & Projects')
+            .replace('Viewed Section: SERVICES', 'Read 02 · Engineering Capabilities');
 
-        let meta = e.meta;
-        if (!meta) {
-          if (e.event_type === 'section_read') {
-            meta = '👤 External Visitor (Reading Session)';
-          } else if (e.event_type === 'project_view' || e.event_type === 'live_demo') {
-            meta = '👤 External Visitor';
+          let meta = e.meta;
+          if (!meta) {
+            if (e.event_type === 'section_read') {
+              meta = '👤 External Visitor (Reading Session)';
+            } else if (e.event_type === 'project_view' || e.event_type === 'live_demo') {
+              meta = '👤 External Visitor';
+            }
           }
-        }
 
-        return {
-          id: e.id || `evt_${Date.now()}`,
-          type: (e.event_type as any) || 'visit',
-          description: desc,
-          meta,
-          timestamp: e.created_at || new Date().toISOString(),
-        };
-      });
-      localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(mappedEvents));
+          return {
+            id: e.id || `evt_${Date.now()}`,
+            type: (e.event_type as any) || 'visit',
+            description: desc,
+            meta,
+            timestamp: e.created_at || new Date().toISOString(),
+          };
+        });
+
+      localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(externalOnlyEvents));
     }
   } catch (err) {
     console.warn('Supabase sync warning:', err);
@@ -613,22 +743,36 @@ export const syncSupabaseData = async (): Promise<{ leads: LeadSubmission[]; ses
   return {
     leads: JSON.parse(localStorage.getItem(STORAGE_KEYS.LEADS) || '[]'),
     sessions: JSON.parse(localStorage.getItem(STORAGE_KEYS.SESSIONS) || '[]'),
+    feedbacks: JSON.parse(localStorage.getItem(STORAGE_KEYS.FEEDBACKS) || '[]'),
   };
 };
 
 export const isOwnerSession = (s: Partial<VisitorSession>): boolean => {
-  if (typeof window === 'undefined') return false;
-  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === '';
-  const currentSessionId = sessionStorage.getItem(STORAGE_KEYS.CURRENT_SESSION);
-  const isWhitelisted = isCurrentDeviceWhitelisted();
-
   if (s.isOwnerDevice === true) return true;
-  if (isLocalhost && s.id === currentSessionId) return true;
-  if (isWhitelisted && s.id === currentSessionId) return true;
-  if (s.deviceName && (s.deviceName.includes('Nedunchezhiyan Laptop') || s.deviceName.includes('Owner Device'))) return true;
+  if (s.deviceName && (s.deviceName.includes('Nedunchezhiyan Laptop') || s.deviceName.includes('Owner Device') || s.deviceName.includes('Owner'))) return true;
   if (s.country && (s.country.includes('Owner Device') || s.country.includes('Owner'))) return true;
-  if (s.city && (s.city.includes('Nedun Laptop') || s.city.includes('Nedun'))) return true;
+  if (s.city && (s.city.includes('Nedun Laptop') || s.city.includes('Nedun') || s.city.includes('Owner'))) return true;
 
+  if (typeof window !== 'undefined') {
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === '';
+    const currentSessionId = sessionStorage.getItem(STORAGE_KEYS.CURRENT_SESSION);
+    const isWhitelisted = isCurrentDeviceWhitelisted();
+
+    if (isLocalhost && s.id === currentSessionId) return true;
+    if (isWhitelisted && s.id === currentSessionId) return true;
+  }
+
+  return false;
+};
+
+export const isOwnerEvent = (evt: any): boolean => {
+  const meta = (evt.meta || '').toLowerCase();
+  const desc = (evt.description || '').toLowerCase();
+  const ownerKeywords = ['owner', '👑', 'laptop', 'whitelisted', 'simulated', 'nedun', 'chezhiyan', 'chezhiyancdurai'];
+  
+  if (ownerKeywords.some((k) => meta.includes(k) || desc.includes(k))) {
+    return true;
+  }
   return false;
 };
 
@@ -654,44 +798,38 @@ if (typeof window !== 'undefined') {
   sanitizeLocalSessions();
 }
 
-export type AnalyticsFilterMode = 'all' | 'owner_only' | 'external_only';
+export type AnalyticsFilterMode = 'external_only';
 
-// Calculate 100% Real Dynamic Metrics for Admin Dashboard
+// Calculate 100% Real Dynamic Metrics for Admin Dashboard strictly from DB External Data
 export const getAnalyticsSummary = (
   daysLimit = 14,
-  filterMode: AnalyticsFilterMode = 'external_only'
+  _filterMode?: string
 ): AnalyticsSummary => {
   sanitizeLocalSessions();
   const rawSessions: VisitorSession[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.SESSIONS) || '[]');
   const leads: LeadSubmission[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.LEADS) || '[]');
+  const feedbacks: VisitorFeedback[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.FEEDBACKS) || '[]');
   const rawRecentEvents = JSON.parse(localStorage.getItem(STORAGE_KEYS.EVENTS) || '[]');
 
-  // Accurately separate owner sessions from real external traffic
-  const allSessions = rawSessions.map((s) => ({
-    ...s,
-    isOwnerDevice: isOwnerSession(s),
-  }));
+  // Strictly filter for real external visitors (exclude all owner/laptop sessions)
+  const sessions = rawSessions.filter((s) => !isOwnerSession(s) && s.isOwnerDevice !== true);
 
-  // Apply device whitelist filtering for sessions
-  const sessions = allSessions.filter((s) => {
-    if (filterMode === 'owner_only') return s.isOwnerDevice === true;
-    if (filterMode === 'external_only') return s.isOwnerDevice !== true;
-    return true;
+  // Strictly filter for real external events (exclude all owner/laptop telemetry)
+  const recentEvents = rawRecentEvents.filter((evt: any) => !isOwnerEvent(evt));
+
+  // Group sessions by unique visitor device (using visitorId or fallback to session id)
+  const uniqueVisitorMap = new Map<string, VisitorSession[]>();
+  sessions.forEach((s) => {
+    const vId = s.visitorId || s.id;
+    if (!uniqueVisitorMap.has(vId)) {
+      uniqueVisitorMap.set(vId, []);
+    }
+    uniqueVisitorMap.get(vId)!.push(s);
   });
 
-  // Apply filtering to events as well so owner actions never contaminate external stats or live feed
-  const recentEvents = rawRecentEvents.filter((evt: any) => {
-    const isOwnerEvt = Boolean(
-      (evt.meta && (evt.meta.includes('Owner') || evt.meta.includes('👑') || evt.meta.includes('Laptop') || evt.meta.includes('Whitelisted'))) ||
-      (evt.description && (evt.description.includes('Owner') || evt.description.includes('👑') || evt.description.includes('Whitelisted') || evt.description.includes('Simulated') || evt.description.includes('Laptop')))
-    );
-
-    if (filterMode === 'owner_only') return isOwnerEvt;
-    if (filterMode === 'external_only') return !isOwnerEvt;
-    return true;
-  });
-
-  const totalVisitors = sessions.length;
+  // Unique visitor count: exactly 1 per unique visitor device
+  const totalVisitors = uniqueVisitorMap.size;
+  // Total views: sum of all pageviews across all visits by each visitor
   const totalPageViews = sessions.reduce((acc, s) => acc + (s.pageViews || 1), 0);
   const totalDuration = sessions.reduce((acc, s) => acc + (s.duration || 0), 0);
   const avgDurationSec = totalVisitors > 0 ? Math.round(totalDuration / totalVisitors) : 0;
@@ -768,12 +906,13 @@ export const getAnalyticsSummary = (
     },
   ];
 
-  // Helper for real distribution percentages
+  // Helper for real distribution percentages per unique visitor
   const calculateBreakdown = (getKey: (s: VisitorSession) => string) => {
-    if (sessions.length === 0) return [];
+    if (uniqueVisitorMap.size === 0) return [];
     const counts: Record<string, number> = {};
-    sessions.forEach((s) => {
-      const key = getKey(s) || 'Other';
+    uniqueVisitorMap.forEach((visitorSessions) => {
+      const primarySession = visitorSessions[0];
+      const key = getKey(primarySession) || 'Other';
       counts[key] = (counts[key] || 0) + 1;
     });
     return Object.entries(counts)
@@ -800,6 +939,8 @@ export const getAnalyticsSummary = (
 
     const daySessions = sessions.filter((s) => s.timestamp.startsWith(dayYearMonthDate));
     const dayLeads = leads.filter((l) => l.timestamp.startsWith(dayYearMonthDate));
+    const dayUniqueVisitors = new Set(daySessions.map((s) => s.visitorId || s.id)).size;
+    const dayPageViews = daySessions.reduce((acc, s) => acc + (s.pageViews || 1), 0);
     const dayProjectClicks = daySessions.reduce(
       (acc, s) => acc + (s.projectInteractions?.length || 0),
       0
@@ -807,8 +948,8 @@ export const getAnalyticsSummary = (
 
     dailyTrends.push({
       date: dateStr,
-      visitors: daySessions.length,
-      pageViews: daySessions.reduce((acc, s) => acc + (s.pageViews || 1), 0),
+      visitors: dayUniqueVisitors,
+      pageViews: dayPageViews,
       leads: dayLeads.length,
       projectClicks: dayProjectClicks,
     });
@@ -917,6 +1058,8 @@ export const getAnalyticsSummary = (
     hourlyActivity: hourlyCounts,
     recentEvents: recentEvents.slice(0, 250),
     leads,
+    feedbacks,
+    sessions: sessions.slice(0, 200),
   };
 };
 

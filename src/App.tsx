@@ -9,6 +9,7 @@ import { About } from './components/About';
 import { Process } from './components/Process';
 import { Contact } from './components/Contact';
 import { Footer } from './components/Footer';
+import { FeedbackWidget } from './components/FeedbackWidget';
 import { AdminDashboard } from './components/admin/AdminDashboard';
 import { initVisitorTracking, trackSectionView } from './utils/analytics';
 
@@ -107,6 +108,9 @@ export const App: React.FC = () => {
 
       {/* Editorial Footer with Admin Link */}
       <Footer onOpenAdmin={() => setIsAdminOpen(true)} />
+
+      {/* Persistent Floating Scroll-Triggered Feedback Widget */}
+      <FeedbackWidget />
 
       {/* Admin Analytics & Lead Management App */}
       {isAdminOpen && <AdminDashboard onClose={handleCloseAdmin} />}

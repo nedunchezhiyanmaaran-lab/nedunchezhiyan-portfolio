@@ -160,9 +160,9 @@ export const SERVICES: ServiceItem[] = [
   {
     id: 'prd-to-mvp',
     number: '01',
-    title: 'PRD to Production MVP',
-    shortDesc: 'From validated concept to production web app in 3–5 weeks.',
-    fullDesc: 'You have a validated concept, wireframe, or business requirement and need a senior builder who understands product. I draft actionable PRDs, design the data architecture, and build responsive, type-safe web applications ready for real users.',
+    title: 'New App Builds & PRD to MVP',
+    shortDesc: 'From zero-to-one validated concepts to production web applications in 3–5 weeks.',
+    fullDesc: 'Building a new product from scratch? You have a validated concept, wireframe, or business requirement and need a senior builder who understands product. I draft actionable PRDs, design the data architecture, and engineer responsive, type-safe web applications ready for real users and immediate monetization.',
     deliverables: [
       'PRD & System Blueprint (Data models, API contracts & user flows)',
       'Production Web App (Next.js 14, React 18 & responsive Tailwind UX)',
@@ -172,11 +172,25 @@ export const SERVICES: ServiceItem[] = [
     stack: ['Next.js 14', 'React 18', 'TypeScript', 'Tailwind CSS', 'Vercel']
   },
   {
-    id: 'fullstack-systems',
+    id: 'app-revamp-modernization',
     number: '02',
-    title: 'Custom Web Applications & Systems',
+    title: 'App Revamps & System Modernization',
+    shortDesc: 'Redesigning, refactoring, and upgrading existing applications to modern standards.',
+    fullDesc: 'Already have an existing web app that looks outdated, suffers from legacy code, or needs new features? I revamp existing applications from top to bottom — upgrading UI/UX design, refactoring legacy codebases to strict TypeScript, adding new capabilities, and making sluggish systems lightning fast without breaking active users.',
+    deliverables: [
+      'Complete UI/UX & Design Revamp (Modern editorial look, fluid responsive interactions)',
+      'Legacy Code Refactoring (Transitioning to TypeScript, clean component architecture)',
+      'Feature Expansion & API Scaling (Adding critical features & modern integrations)',
+      'Zero-Downtime Migration (Seamless transition preserving user data & SEO)'
+    ],
+    stack: ['React 18', 'Next.js 14', 'TypeScript', 'Tailwind CSS', 'PostgreSQL']
+  },
+  {
+    id: 'fullstack-systems',
+    number: '03',
+    title: 'Custom Web Platforms & Systems',
     shortDesc: 'Bespoke operational platforms when off-the-shelf tools hit their limits.',
-    fullDesc: 'When templates and no-code tools can’t support your business logic, I build custom web software from scratch. From multi-role management dashboards to live order-dispatch workflows and high-concurrency client portals.',
+    fullDesc: 'When templates and no-code tools can’t support your business logic, I build custom web software from scratch or scale your existing stack. From multi-role management dashboards to live order-dispatch workflows and high-concurrency client portals.',
     deliverables: [
       'Architecture & API Contracts (Structured data flows & schema design)',
       'Reactive State & Data Sync (Client state management & persistent storage)',
@@ -187,10 +201,10 @@ export const SERVICES: ServiceItem[] = [
   },
   {
     id: 'perf-refactoring',
-    number: '03',
+    number: '04',
     title: 'Performance & Architecture Audits',
     shortDesc: 'Eliminating latency, untangling tech debt, and stabilizing fragile code.',
-    fullDesc: 'Slow load times kill retention. If your application feels sluggish or fragile, I audit the codebase, eliminate bundle bloat, optimize rendering cycles, decouple monolithic components, and upgrade your stack to strict TypeScript.',
+    fullDesc: 'Slow load times kill retention. If your existing application feels sluggish or fragile, I audit the codebase, eliminate bundle bloat, optimize rendering cycles, decouple monolithic components, and upgrade your stack to strict TypeScript.',
     deliverables: [
       'Core Web Vitals 95+ (Sub-second FCP, zero CLS & asset optimization)',
       'State & Query Optimization (Efficient caching & minimal re-renders)',
@@ -201,10 +215,10 @@ export const SERVICES: ServiceItem[] = [
   },
   {
     id: 'ai-automation',
-    number: '04',
+    number: '05',
     title: 'AI Pipelines & Intelligent Workflows',
     shortDesc: 'Practical AI tooling and semantic workflows that solve real bottlenecks.',
-    fullDesc: 'No AI buzzword fluff. I build deterministic automation pipelines that parse unstructured data, power semantic search, and execute structured AI function calls directly connected to your product UI.',
+    fullDesc: 'No AI buzzword fluff. I build deterministic automation pipelines that parse unstructured data, power semantic search, and execute structured AI function calls directly connected into your new or existing product UI.',
     deliverables: [
       'Structured LLM Function Calling (Deterministic JSON outputs & tool calling)',
       'Vector & Semantic Search (Contextual document embeddings & indexing)',

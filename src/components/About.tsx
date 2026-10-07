@@ -29,10 +29,10 @@ export const About: React.FC = () => {
 
           <div className="space-y-6 text-base sm:text-lg text-ink-secondary leading-relaxed font-normal">
             <p>
-              I am Nedunchezhiyan, an independent Full Stack Developer with deep <strong className="text-ink font-semibold">product thinking, system architecture, and PRD formulation</strong> skills. I help founders, product leads, and ambitious businesses transform raw ideas into production-ready software.
+              I am Nedunchezhiyan, an independent Full Stack Developer with deep <strong className="text-ink font-semibold">product thinking, system architecture, and PRD formulation</strong> skills. I partner with founders, product leaders, and engineering teams to <strong className="text-ink font-semibold">build new web applications from scratch</strong> and <strong className="text-ink font-semibold">revamp, modernize, and scale existing products</strong>.
             </p>
             <p>
-              Most engineering efforts fail before a line of code is written due to vague product requirements and fragile architecture. I draft concrete Product Requirement Documents (PRDs), model data schemas, design type-safe APIs, and build reactive, high-performance interfaces that stand the test of time.
+              Whether you need a rapid zero-to-one MVP launch, a complete UI/UX overhaul of a legacy dashboard, or deep performance optimization to remove technical debt, I draft concrete PRDs, model clean data schemas, design type-safe APIs, and deliver resilient software built for long-term growth.
             </p>
           </div>
 

@@ -48,6 +48,20 @@ export interface SupabaseEvent {
   created_at?: string;
 }
 
+export interface SupabaseFeedback {
+  id: string;
+  name: string;
+  role?: string;
+  email?: string;
+  rating: string;
+  message: string;
+  device: string;
+  os: string;
+  browser: string;
+  referrer: string;
+  created_at: string;
+}
+
 // Database Operations with Resilience & Error Handling
 export const db = {
   // Leads
@@ -56,6 +70,7 @@ export const db = {
       const { data, error } = await supabase
         .from('contact_leads')
         .select('*')
+        .neq('project_type', 'Visitor Feedback')
         .order('created_at', { ascending: false });
       if (error) throw error;
       return data || [];
@@ -115,6 +130,148 @@ export const db = {
     }
   },
 
+  // Visitor Feedbacks
+  async submitFeedback(feedback: {
+    name: string;
+    role?: string;
+    email?: string;
+    rating: string;
+    message: string;
+    device: string;
+    os: string;
+    browser: string;
+    referrer: string;
+    visitorId?: string;
+  }): Promise<SupabaseFeedback | null> {
+    try {
+      const vId = feedback.visitorId || 'anon';
+      const cleanRole = feedback.role?.trim() || '';
+      const { data, error } = await supabase
+        .from('contact_leads')
+        .insert([
+          {
+            name: feedback.name || 'Anonymous Visitor',
+            email: feedback.email || (cleanRole ? cleanRole : 'visitor@feedback.dev'),
+            project_type: 'Visitor Feedback',
+            budget: feedback.rating,
+            timeline: `${feedback.device} · ${feedback.os} (${feedback.browser})`,
+            message: feedback.message,
+            status: 'new',
+            notes: `role:${cleanRole}|vis:${vId}|dev:${feedback.device}_${feedback.os}_${feedback.browser}_${feedback.referrer}`,
+          },
+        ])
+        .select()
+        .single();
+      if (error) throw error;
+      if (data) {
+        return {
+          id: data.id,
+          name: data.name,
+          role: cleanRole || 'Visitor',
+          email: data.email,
+          rating: data.budget,
+          message: data.message,
+          device: feedback.device,
+          os: feedback.os,
+          browser: feedback.browser,
+          referrer: feedback.referrer,
+          created_at: data.created_at || new Date().toISOString(),
+        };
+      }
+      return null;
+    } catch (err) {
+      console.warn('Supabase submitFeedback fallback:', err);
+      return null;
+    }
+  },
+
+  async getFeedbacks(): Promise<SupabaseFeedback[]> {
+    try {
+      const { data, error } = await supabase
+        .from('contact_leads')
+        .select('*')
+        .eq('project_type', 'Visitor Feedback')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data || []).map((row: any) => {
+        const devInfo = row.timeline || 'Desktop · Windows (Chrome)';
+        const parts = devInfo.split('·');
+        const dev = parts[0]?.trim() || 'Desktop';
+        const rest = parts[1]?.trim() || 'Windows (Chrome)';
+        const osMatch = rest.match(/^(.*?)\s*\((.*?)\)$/);
+        const os = osMatch ? osMatch[1] : rest;
+        const browser = osMatch ? osMatch[2] : 'Chrome';
+
+        const notes = row.notes || '';
+        let referrer = 'Direct';
+        if (notes.includes('dev:')) {
+          const noteParts = notes.split('dev:')[1]?.split('_') || [];
+          referrer = noteParts[3] || 'Direct';
+        } else if (notes.includes('device:')) {
+          const noteParts = notes.replace('device:', '').split('_');
+          referrer = noteParts[3] || 'Direct';
+        }
+
+        // Extract role from notes or email or name pattern
+        let role = '';
+        if (notes.includes('role:')) {
+          const roleMatch = notes.match(/role:([^|]*)/);
+          if (roleMatch && roleMatch[1]?.trim()) {
+            role = roleMatch[1].trim();
+          }
+        }
+
+        let displayName = row.name || 'Anonymous Visitor';
+        if (!role) {
+          if (displayName.includes('/')) {
+            const split = displayName.split('/');
+            displayName = split[0].trim();
+            role = split[1].trim();
+          } else if (displayName.includes('·')) {
+            const split = displayName.split('·');
+            displayName = split[0].trim();
+            role = split[1].trim();
+          } else if (displayName.includes('(') && displayName.includes(')')) {
+            const m = displayName.match(/^(.*?)\s*\((.*?)\)$/);
+            if (m) {
+              displayName = m[1].trim();
+              role = m[2].trim();
+            }
+          } else if (row.email && row.email !== 'visitor@feedback.dev' && !row.email.includes('@')) {
+            role = row.email;
+          }
+        }
+
+        return {
+          id: row.id,
+          name: displayName,
+          role: role || 'Visitor',
+          email: row.email,
+          rating: row.budget || '5/5 ⭐',
+          message: row.message,
+          device: dev,
+          os: os,
+          browser: browser,
+          referrer: referrer,
+          created_at: row.created_at || new Date().toISOString(),
+        };
+      });
+    } catch (err) {
+      console.warn('Supabase getFeedbacks fallback:', err);
+      return [];
+    }
+  },
+
+  async deleteFeedback(id: string): Promise<boolean> {
+    try {
+      const { error } = await supabase.from('contact_leads').delete().eq('id', id);
+      if (error) throw error;
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
   // Sessions & Telemetry
   async saveSession(session: SupabaseSession): Promise<boolean> {
     try {
@@ -142,7 +299,7 @@ export const db = {
     }
   },
 
-  async getSessions(limit = 100): Promise<SupabaseSession[]> {
+  async getSessions(limit = 1000): Promise<SupabaseSession[]> {
     try {
       const { data, error } = await supabase
         .from('visitor_sessions')
@@ -175,7 +332,7 @@ export const db = {
     }
   },
 
-  async getEvents(limit = 250): Promise<SupabaseEvent[]> {
+  async getEvents(limit = 1000): Promise<SupabaseEvent[]> {
     try {
       const { data, error } = await supabase
         .from('analytics_events')
