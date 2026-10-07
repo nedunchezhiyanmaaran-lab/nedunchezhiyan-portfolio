@@ -111,12 +111,12 @@ export const fetchAndWhitelistCurrentIP = async (): Promise<string> => {
 };
 
 export const isCurrentDeviceWhitelisted = (): boolean => {
-  if (typeof window === 'undefined') return true;
+  if (typeof window === 'undefined') return false;
   const isLocalhost =
     window.location.hostname === 'localhost' ||
     window.location.hostname === '127.0.0.1' ||
     window.location.hostname === '';
-  const isExplicitlyWhitelisted = localStorage.getItem(OWNER_WHITELIST_KEY) !== 'false';
+  const isExplicitlyWhitelisted = localStorage.getItem(OWNER_WHITELIST_KEY) === 'true';
   return isLocalhost || isExplicitlyWhitelisted;
 };
 
@@ -469,6 +469,25 @@ export const syncSupabaseData = async (): Promise<{ leads: LeadSubmission[]; ses
 
       localSessions.forEach((s) => sessionMap.set(s.id, s));
       remoteSessions.forEach((s: SupabaseSession) => {
+        const isExternalReferrer =
+          s.referrer?.includes('linkedin') ||
+          s.referrer?.includes('LinkedIn') ||
+          s.referrer?.includes('reddit') ||
+          s.referrer?.includes('twitter') ||
+          s.referrer?.includes('x.com') ||
+          s.referrer?.includes('github') ||
+          s.referrer?.includes('google');
+
+        const isExternalPlatform =
+          s.device === 'Mobile' ||
+          s.device === 'Tablet' ||
+          s.os === 'iOS' ||
+          s.os === 'Android' ||
+          s.os === 'macOS' ||
+          s.browser === 'Safari';
+
+        const isOwner = !isExternalReferrer && !isExternalPlatform && (s.country?.includes('Owner Device') && s.city?.includes('Nedun Laptop'));
+
         sessionMap.set(s.id, {
           id: s.id,
           timestamp: s.timestamp,
@@ -477,11 +496,12 @@ export const syncSupabaseData = async (): Promise<{ leads: LeadSubmission[]; ses
           device: (s.device as any) || 'Desktop',
           browser: (s.browser as any) || 'Chrome',
           os: (s.os as any) || 'Windows',
-          country: s.country || 'Live Visitor',
-          city: s.city || '',
+          country: isOwner ? 'India (Owner Device)' : (s.country?.replace(' (Owner Device)', '') || 'Live Visitor'),
+          city: isOwner ? 'Nedun Laptop' : (s.city?.replace('Nedun Laptop', 'Client Session') || 'External Session'),
           pageViews: s.page_views || 1,
           sectionsViewed: s.sections_viewed || ['hero'],
           projectInteractions: s.project_interactions || [],
+          isOwnerDevice: isOwner,
         });
       });
 
@@ -497,7 +517,11 @@ export const syncSupabaseData = async (): Promise<{ leads: LeadSubmission[]; ses
       const mappedEvents = remoteEvents.map((e: SupabaseEvent) => ({
         id: e.id || `evt_${Date.now()}`,
         type: (e.event_type as any) || 'visit',
-        description: e.description,
+        description: e.description.replace('👑 Owner Laptop connected from LinkedIn', '👥 LinkedIn Visitor connected')
+                               .replace('👑 Owner Laptop connected from www.reddit.com', '👥 Reddit Visitor connected')
+                               .replace('👑 Owner Laptop connected from Direct (macOS / Safari)', '👥 Safari macOS Visitor connected')
+                               .replace('👑 Owner Laptop connected from Direct (Linux / Chrome)', '👥 Linux Chrome Visitor connected')
+                               .replace('👑 Owner Laptop connected from Direct (Android / Chrome)', '👥 Android Visitor connected'),
         meta: e.meta,
         timestamp: e.created_at || new Date().toISOString(),
       }));
@@ -524,17 +548,33 @@ export const getAnalyticsSummary = (
   const leads: LeadSubmission[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.LEADS) || '[]');
   const recentEvents = JSON.parse(localStorage.getItem(STORAGE_KEYS.EVENTS) || '[]');
 
-  const currentSessionId = sessionStorage.getItem(STORAGE_KEYS.CURRENT_SESSION);
+  const currentSessionId = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(STORAGE_KEYS.CURRENT_SESSION) : null;
+  const isThisMachineWhitelisted = isCurrentDeviceWhitelisted();
 
-  // Retroactively ensure all sessions originating from this machine or localhost are marked as owner
+  // Accurately separate owner sessions from real external traffic
   const allSessions = rawSessions.map((s) => {
-    const isLocal =
-      s.isOwnerDevice ||
-      s.id === currentSessionId ||
-      s.country?.includes('Owner') ||
-      s.city?.includes('Nedun') ||
-      s.referrer === 'Direct' && (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'));
-    return { ...s, isOwnerDevice: !!isLocal };
+    // Current active session on localhost/whitelisted laptop is owner
+    if (s.id === currentSessionId && isThisMachineWhitelisted) {
+      return { ...s, isOwnerDevice: true };
+    }
+
+    const isExplicitExternal =
+      s.referrer?.includes('LinkedIn') ||
+      s.referrer?.includes('reddit') ||
+      s.referrer?.includes('Twitter') ||
+      s.referrer?.includes('GitHub') ||
+      s.device === 'Mobile' ||
+      s.device === 'Tablet' ||
+      s.os === 'iOS' ||
+      s.os === 'Android' ||
+      s.os === 'macOS' ||
+      s.os === 'Linux';
+
+    if (isExplicitExternal) {
+      return { ...s, isOwnerDevice: false };
+    }
+
+    return s;
   });
 
   // Apply device whitelist filtering
