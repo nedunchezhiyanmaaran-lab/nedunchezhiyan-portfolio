@@ -11,6 +11,17 @@ export interface Project {
   githubUrl?: string;
   role: string;
   timeline: string;
+  startingPoint: {
+    providedByClient: string[];
+  };
+  myContribution: {
+    role: string;
+    responsibilities: string[];
+  };
+  delivered: {
+    outcome: string;
+    keyDeliverables: string[];
+  };
   architectureHighlights: string[];
   features: string[];
   themeColor: string;

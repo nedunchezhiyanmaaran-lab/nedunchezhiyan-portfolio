@@ -118,12 +118,12 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({ project, onClose }) 
                     onClick={handleLaunchExternal}
                     className="inline-flex items-center space-x-2 px-6 py-3 rounded-full bg-ink text-[#FAF9F5] text-xs font-semibold tracking-wide hover:bg-accent transition-all duration-300 shadow-sm"
                   >
-                    <span>Launch Production Deployment</span>
+                    <span>Launch Live Interactive Demo</span>
                     <ArrowUpRight className="w-4 h-4" />
                   </a>
                   <button
                     onClick={() => setActiveTab('live-preview')}
-                    className="inline-flex items-center space-x-2 px-5 py-3 rounded-full bg-black/[0.04] hover:bg-black/[0.08] text-ink text-xs font-semibold transition-colors"
+                    className="inline-flex items-center space-x-2 px-5 py-3 rounded-full bg-black/[0.04] hover:bg-black/[0.08] text-ink text-xs font-semibold transition-colors cursor-pointer"
                   >
                     <span>Test Inside Embed</span>
                   </button>
@@ -143,6 +143,84 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({ project, onClose }) 
                         {tech}
                       </span>
                     ))}
+                  </div>
+                </div>
+
+                {/* 3-Part Contribution Breakdown */}
+                <div className="pt-6 border-t border-black/[0.08] space-y-4">
+                  <div className="rounded-2xl bg-[#FAF8F5] border border-black/[0.08] p-6 space-y-5">
+                    {/* Header */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-black/[0.06]">
+                      <div className="flex items-center space-x-2.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-accent" />
+                        <span className="font-mono text-xs font-semibold text-ink uppercase tracking-wider">
+                          Client Brief &amp; Autonomous Execution
+                        </span>
+                      </div>
+                      <span className="px-3 py-1 rounded-full bg-white border border-black/[0.06] text-[11px] font-mono text-ink-secondary font-medium">
+                        Vision &rarr; Architecture &rarr; Live Demo
+                      </span>
+                    </div>
+
+                    {/* 3 Columns */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 md:divide-x divide-black/[0.07]">
+                      {/* 01. Client Vision */}
+                      <div className="space-y-2.5">
+                        <span className="font-mono text-[10px] uppercase tracking-widest text-ink-muted font-semibold block">
+                          01 / Client Vision &amp; Prompt
+                        </span>
+                        <h4 className="font-display text-sm font-semibold text-ink">
+                          Initial Concept &amp; Requirements
+                        </h4>
+                        <ul className="space-y-1.5 pt-1">
+                          {project.startingPoint.providedByClient.map((item, idx) => (
+                            <li key={idx} className="text-xs text-ink-secondary flex items-start space-x-2 leading-relaxed">
+                              <span className="w-1 h-1 rounded-full bg-accent shrink-0 mt-2" />
+                              <span>{item}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      {/* 02. Autonomous Execution */}
+                      <div className="space-y-2.5 md:pl-6">
+                        <span className="font-mono text-[10px] uppercase tracking-widest text-accent font-semibold block">
+                          02 / Autonomous Build
+                        </span>
+                        <h4 className="font-display text-sm font-semibold text-ink">
+                          {project.myContribution.role}
+                        </h4>
+                        <ul className="space-y-1.5 pt-1">
+                          {project.myContribution.responsibilities.map((item, idx) => (
+                            <li key={idx} className="text-xs text-ink flex items-start space-x-2 leading-relaxed">
+                              <span className="w-1 h-1 rounded-full bg-ink shrink-0 mt-2" />
+                              <span>{item}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      {/* 03. Live Interactive Demo */}
+                      <div className="space-y-2.5 md:pl-6">
+                        <span className="font-mono text-[10px] uppercase tracking-widest text-ink-muted font-semibold block">
+                          03 / Delivered Prototype
+                        </span>
+                        <h4 className="font-display text-sm font-semibold text-ink">
+                          Functional Interactive Demo
+                        </h4>
+                        <p className="text-xs text-ink-secondary leading-relaxed font-normal">
+                          {project.delivered.outcome}
+                        </p>
+                        <ul className="space-y-1.5 pt-2 border-t border-black/[0.05]">
+                          {project.delivered.keyDeliverables.map((item, idx) => (
+                            <li key={idx} className="text-[11px] text-ink font-medium flex items-start space-x-2 leading-relaxed">
+                              <span className="text-accent shrink-0 font-bold">✓</span>
+                              <span>{item}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
                   </div>
                 </div>
 

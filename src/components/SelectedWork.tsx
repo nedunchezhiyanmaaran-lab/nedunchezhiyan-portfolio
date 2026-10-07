@@ -17,8 +17,85 @@ export const SelectedWork: React.FC = () => {
   const jameenProject = PROJECTS[1];
   const crmProject = PROJECTS[2];
 
+  const renderContributionBreakdown = (project: Project) => (
+    <div className="rounded-2xl bg-[#FAF8F5] border border-black/[0.08] p-6 sm:p-7 transition-all">
+      {/* Scope Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-5 border-b border-black/[0.07]">
+        <div className="flex items-center space-x-2.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-accent" />
+          <span className="font-mono text-xs font-semibold text-ink uppercase tracking-wider">
+            Client Brief &amp; Autonomous Execution
+          </span>
+        </div>
+        <span className="px-3 py-1 rounded-full bg-black/[0.03] border border-black/[0.06] text-[11px] font-mono text-ink-secondary font-medium">
+          Vision &rarr; Architecture &rarr; Live Demo
+        </span>
+      </div>
+
+      {/* 3 Balanced Columns */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 pt-5 md:divide-x divide-black/[0.07]">
+        {/* 01. Client Vision */}
+        <div className="space-y-2.5">
+          <span className="font-mono text-[10px] uppercase tracking-widest text-ink-muted font-semibold block">
+            01 / Client Vision &amp; Prompt
+          </span>
+          <h4 className="font-display text-sm font-semibold text-ink">
+            Initial Concept &amp; Requirements
+          </h4>
+          <ul className="space-y-2 pt-0.5">
+            {project.startingPoint.providedByClient.map((item, idx) => (
+              <li key={idx} className="text-xs text-ink-secondary flex items-start space-x-2 leading-relaxed">
+                <span className="w-1 h-1 rounded-full bg-accent shrink-0 mt-2" />
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* 02. Autonomous Execution */}
+        <div className="space-y-2.5 md:pl-8">
+          <span className="font-mono text-[10px] uppercase tracking-widest text-accent font-semibold block">
+            02 / Autonomous Build
+          </span>
+          <h4 className="font-display text-sm font-semibold text-ink">
+            {project.myContribution.role}
+          </h4>
+          <ul className="space-y-2 pt-0.5">
+            {project.myContribution.responsibilities.map((item, idx) => (
+              <li key={idx} className="text-xs text-ink flex items-start space-x-2 leading-relaxed">
+                <span className="w-1 h-1 rounded-full bg-ink shrink-0 mt-2" />
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* 03. Live Interactive Demo */}
+        <div className="space-y-2.5 md:pl-8">
+          <span className="font-mono text-[10px] uppercase tracking-widest text-ink-muted font-semibold block">
+            03 / Delivered Prototype
+          </span>
+          <h4 className="font-display text-sm font-semibold text-ink">
+            Functional Interactive Demo
+          </h4>
+          <p className="text-xs text-ink-secondary leading-relaxed font-normal">
+            {project.delivered.outcome}
+          </p>
+          <ul className="space-y-1.5 pt-2 border-t border-black/[0.05]">
+            {project.delivered.keyDeliverables.map((item, idx) => (
+              <li key={idx} className="text-[11px] text-ink flex items-start space-x-2 leading-relaxed font-medium">
+                <span className="text-accent shrink-0 font-bold">✓</span>
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
-    <section id="work" className="bg-white border-b border-black/[0.08] py-28 sm:py-36">
+    <section id="work" className="bg-white border-b border-black/[0.08] py-28 sm:py-36 scroll-mt-16">
       <div className="max-w-7xl mx-auto px-6 sm:px-10">
         {/* Section Header */}
         <div className="space-y-4 mb-20 sm:mb-24">
@@ -28,7 +105,7 @@ export const SelectedWork: React.FC = () => {
             </span>
             <span className="w-8 h-[2px] bg-accent" />
             <span className="font-mono text-[11px] sm:text-xs uppercase tracking-[0.22em] font-semibold text-ink">
-              Selected Work &amp; Case Studies
+              Selected Work &amp; Interactive Demos
             </span>
           </div>
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
@@ -36,7 +113,7 @@ export const SelectedWork: React.FC = () => {
               Featured Case Studies.
             </h2>
             <p className="text-sm sm:text-base text-ink-secondary max-w-md leading-relaxed">
-              Production web applications built with rigorous full-stack craftsmanship, bespoke design, and reliable cloud deployments.
+              Functional web applications and interactive prototypes engineered end-to-end from client concepts to live working demos.
             </p>
           </div>
         </div>
@@ -68,19 +145,18 @@ export const SelectedWork: React.FC = () => {
               </a>
               <button
                 onClick={() => handleOpenProject(travelProject)}
-                className="inline-flex items-center space-x-1.5 px-4 py-2.5 rounded-full bg-black/[0.04] hover:bg-black/[0.08] text-ink text-xs font-semibold transition-colors"
+                className="inline-flex items-center space-x-1.5 px-4 py-2.5 rounded-full bg-black/[0.04] hover:bg-black/[0.08] text-ink text-xs font-semibold transition-colors cursor-pointer"
               >
                 <span>Case Study</span>
               </button>
             </div>
           </div>
 
-          {/* Cinematic Visual Canvas (Rounded 4xl, immersive) */}
+          {/* Cinematic Visual Canvas */}
           <div
             onClick={() => handleOpenProject(travelProject)}
             className="relative rounded-3xl sm:rounded-5xl overflow-hidden bg-gradient-to-br from-[#061826] via-[#0A2540] to-[#04121F] text-white p-8 sm:p-14 cursor-pointer shadow-xl transition-transform duration-500 hover:scale-[1.008]"
           >
-            {/* Background Ambient Glow */}
             <div className="absolute -top-32 -right-32 w-96 h-96 bg-cyan-500/20 rounded-full blur-3xl pointer-events-none" />
             <div className="absolute -bottom-32 -left-32 w-96 h-96 bg-amber-500/15 rounded-full blur-3xl pointer-events-none" />
 
@@ -102,10 +178,10 @@ export const SelectedWork: React.FC = () => {
 
                 {/* Feature Chips */}
                 <div className="flex flex-wrap gap-2 pt-2">
-                  {['Next.js 14', 'React 18', 'TypeScript', 'Tailwind CSS', 'Vercel'].map((tag) => (
+                  {travelProject.techStack.map((tag) => (
                     <span
                       key={tag}
-                      className="px-3 py-1 rounded-full bg-white/10 border border-white/10 text-xs text-white/90"
+                      className="px-3 py-1 rounded-full bg-white/10 border border-white/10 text-xs text-white/90 font-mono"
                     >
                       {tag}
                     </span>
@@ -148,6 +224,9 @@ export const SelectedWork: React.FC = () => {
               </div>
             </div>
           </div>
+
+          {/* Structured Contribution Breakdown */}
+          {renderContributionBreakdown(travelProject)}
         </div>
 
         {/* =========================================================================
@@ -176,19 +255,18 @@ export const SelectedWork: React.FC = () => {
               </a>
               <button
                 onClick={() => handleOpenProject(jameenProject)}
-                className="inline-flex items-center space-x-1.5 px-4 py-2.5 rounded-full bg-black/[0.04] hover:bg-black/[0.08] text-ink text-xs font-semibold transition-colors"
+                className="inline-flex items-center space-x-1.5 px-4 py-2.5 rounded-full bg-black/[0.04] hover:bg-black/[0.08] text-ink text-xs font-semibold transition-colors cursor-pointer"
               >
                 <span>Case Study</span>
               </button>
             </div>
           </div>
 
-          {/* Cinematic Visual Canvas (Gold/Dark Luxury) */}
+          {/* Cinematic Visual Canvas */}
           <div
             onClick={() => handleOpenProject(jameenProject)}
             className="relative rounded-3xl sm:rounded-5xl overflow-hidden bg-gradient-to-br from-[#120F08] via-[#1A160C] to-[#0A0804] text-white p-8 sm:p-14 cursor-pointer shadow-xl transition-transform duration-500 hover:scale-[1.008]"
           >
-            {/* Background Ambient Glow */}
             <div className="absolute -top-32 -right-32 w-96 h-96 bg-amber-500/15 rounded-full blur-3xl pointer-events-none" />
             <div className="absolute -bottom-32 -left-32 w-96 h-96 bg-yellow-600/10 rounded-full blur-3xl pointer-events-none" />
 
@@ -247,10 +325,10 @@ export const SelectedWork: React.FC = () => {
 
                 {/* Feature Chips */}
                 <div className="flex flex-wrap gap-2 pt-2">
-                  {['Next.js', 'React', 'TypeScript', 'Tailwind CSS', 'Vercel'].map((tag) => (
+                  {jameenProject.techStack.map((tag) => (
                     <span
                       key={tag}
-                      className="px-3 py-1 rounded-full bg-white/10 border border-white/10 text-xs text-white/90"
+                      className="px-3 py-1 rounded-full bg-white/10 border border-white/10 text-xs text-white/90 font-mono"
                     >
                       {tag}
                     </span>
@@ -259,6 +337,9 @@ export const SelectedWork: React.FC = () => {
               </div>
             </div>
           </div>
+
+          {/* Structured Contribution Breakdown */}
+          {renderContributionBreakdown(jameenProject)}
         </div>
 
         {/* =========================================================================
@@ -287,19 +368,18 @@ export const SelectedWork: React.FC = () => {
               </a>
               <button
                 onClick={() => handleOpenProject(crmProject)}
-                className="inline-flex items-center space-x-1.5 px-4 py-2.5 rounded-full bg-black/[0.04] hover:bg-black/[0.08] text-ink text-xs font-semibold transition-colors"
+                className="inline-flex items-center space-x-1.5 px-4 py-2.5 rounded-full bg-black/[0.04] hover:bg-black/[0.08] text-ink text-xs font-semibold transition-colors cursor-pointer"
               >
                 <span>Case Study</span>
               </button>
             </div>
           </div>
 
-          {/* Cinematic Visual Canvas (Enterprise Navy / Slate SaaS Glow) */}
+          {/* Cinematic Visual Canvas */}
           <div
             onClick={() => handleOpenProject(crmProject)}
             className="relative rounded-3xl sm:rounded-5xl overflow-hidden bg-gradient-to-br from-[#0B132B] via-[#1C2541] to-[#0A0F1D] text-white p-8 sm:p-14 cursor-pointer shadow-xl transition-transform duration-500 hover:scale-[1.008]"
           >
-            {/* Background Ambient Glow */}
             <div className="absolute -top-32 -right-32 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl pointer-events-none" />
             <div className="absolute -bottom-32 -left-32 w-96 h-96 bg-indigo-500/15 rounded-full blur-3xl pointer-events-none" />
 
@@ -321,10 +401,10 @@ export const SelectedWork: React.FC = () => {
 
                 {/* Feature Chips */}
                 <div className="flex flex-wrap gap-2 pt-2">
-                  {['Next.js 14', 'React 18', 'TypeScript', 'Tailwind CSS', 'Lucide Icons'].map((tag) => (
+                  {crmProject.techStack.map((tag) => (
                     <span
                       key={tag}
-                      className="px-3 py-1 rounded-full bg-white/10 border border-white/10 text-xs text-white/90"
+                      className="px-3 py-1 rounded-full bg-white/10 border border-white/10 text-xs text-white/90 font-mono"
                     >
                       {tag}
                     </span>
@@ -332,7 +412,7 @@ export const SelectedWork: React.FC = () => {
                 </div>
               </div>
 
-              {/* Right Visual Composition (SaaS Pipeline & AI Deal Card) */}
+              {/* Right Visual Composition */}
               <div className="lg:col-span-6 space-y-4">
                 <div className="relative rounded-2xl overflow-hidden shadow-2xl border border-blue-400/20 bg-slate-950/60 backdrop-blur-md p-6 space-y-4">
                   <div className="flex items-center justify-between pb-3 border-b border-white/10 text-xs">
@@ -382,6 +462,9 @@ export const SelectedWork: React.FC = () => {
               </div>
             </div>
           </div>
+
+          {/* Structured Contribution Breakdown */}
+          {renderContributionBreakdown(crmProject)}
         </div>
       </div>
       </div>

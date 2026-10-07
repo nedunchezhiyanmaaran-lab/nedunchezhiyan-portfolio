@@ -537,8 +537,14 @@ export const syncSupabaseData = async (): Promise<{ leads: LeadSubmission[]; ses
       const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
       remoteSessions.forEach((s: SupabaseSession) => {
-        // Only the current local admin active tab on localhost is tagged as owner
-        const isOwner = isLocalhost && s.id === currentSessionId;
+        // Accurately tag owner sessions from localhost, device name, or location metadata
+        const isOwner = Boolean(
+          (isLocalhost && s.id === currentSessionId) ||
+          s.country?.includes('Owner Device') ||
+          s.city?.includes('Nedun Laptop') ||
+          (s.device && s.device.includes('Nedunchezhiyan')) ||
+          (isLocalhost && s.device === 'Desktop' && s.os === 'Windows' && s.referrer === 'Direct')
+        );
 
         sessionMap.set(s.id, {
           id: s.id,
@@ -546,6 +552,7 @@ export const syncSupabaseData = async (): Promise<{ leads: LeadSubmission[]; ses
           duration: s.duration || 1,
           referrer: s.referrer || 'Direct',
           device: (s.device as any) || 'Desktop',
+          deviceName: isOwner ? 'Nedunchezhiyan Laptop' : `${s.device} (${s.os} / ${s.browser})`,
           browser: (s.browser as any) || 'Chrome',
           os: (s.os as any) || 'Windows',
           country: isOwner ? 'India (Owner Device)' : (s.country?.replace(' (Owner Device)', '') || 'Live Visitor'),
@@ -609,6 +616,44 @@ export const syncSupabaseData = async (): Promise<{ leads: LeadSubmission[]; ses
   };
 };
 
+export const isOwnerSession = (s: Partial<VisitorSession>): boolean => {
+  if (typeof window === 'undefined') return false;
+  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === '';
+  const currentSessionId = sessionStorage.getItem(STORAGE_KEYS.CURRENT_SESSION);
+  const isWhitelisted = isCurrentDeviceWhitelisted();
+
+  if (s.isOwnerDevice === true) return true;
+  if (isLocalhost && s.id === currentSessionId) return true;
+  if (isWhitelisted && s.id === currentSessionId) return true;
+  if (s.deviceName && (s.deviceName.includes('Nedunchezhiyan Laptop') || s.deviceName.includes('Owner Device'))) return true;
+  if (s.country && (s.country.includes('Owner Device') || s.country.includes('Owner'))) return true;
+  if (s.city && (s.city.includes('Nedun Laptop') || s.city.includes('Nedun'))) return true;
+
+  return false;
+};
+
+export const sanitizeLocalSessions = () => {
+  try {
+    const rawSessions: VisitorSession[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.SESSIONS) || '[]');
+    let changed = false;
+    const sanitized = rawSessions.map((s) => {
+      if (isOwnerSession(s) && !s.isOwnerDevice) {
+        changed = true;
+        return { ...s, isOwnerDevice: true };
+      }
+      return s;
+    });
+    if (changed) {
+      localStorage.setItem(STORAGE_KEYS.SESSIONS, JSON.stringify(sanitized));
+    }
+  } catch {}
+};
+
+// Auto-sanitize on load
+if (typeof window !== 'undefined') {
+  sanitizeLocalSessions();
+}
+
 export type AnalyticsFilterMode = 'all' | 'owner_only' | 'external_only';
 
 // Calculate 100% Real Dynamic Metrics for Admin Dashboard
@@ -616,26 +661,33 @@ export const getAnalyticsSummary = (
   daysLimit = 14,
   filterMode: AnalyticsFilterMode = 'external_only'
 ): AnalyticsSummary => {
+  sanitizeLocalSessions();
   const rawSessions: VisitorSession[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.SESSIONS) || '[]');
   const leads: LeadSubmission[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.LEADS) || '[]');
-  const recentEvents = JSON.parse(localStorage.getItem(STORAGE_KEYS.EVENTS) || '[]');
-
-  const currentSessionId = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(STORAGE_KEYS.CURRENT_SESSION) : null;
-  const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+  const rawRecentEvents = JSON.parse(localStorage.getItem(STORAGE_KEYS.EVENTS) || '[]');
 
   // Accurately separate owner sessions from real external traffic
-  const allSessions = rawSessions.map((s) => {
-    // Current active session on localhost is owner
-    if (isLocalhost && s.id === currentSessionId) {
-      return { ...s, isOwnerDevice: true };
-    }
-    return { ...s, isOwnerDevice: false };
-  });
+  const allSessions = rawSessions.map((s) => ({
+    ...s,
+    isOwnerDevice: isOwnerSession(s),
+  }));
 
-  // Apply device whitelist filtering
+  // Apply device whitelist filtering for sessions
   const sessions = allSessions.filter((s) => {
     if (filterMode === 'owner_only') return s.isOwnerDevice === true;
     if (filterMode === 'external_only') return s.isOwnerDevice !== true;
+    return true;
+  });
+
+  // Apply filtering to events as well so owner actions never contaminate external stats or live feed
+  const recentEvents = rawRecentEvents.filter((evt: any) => {
+    const isOwnerEvt = Boolean(
+      (evt.meta && (evt.meta.includes('Owner') || evt.meta.includes('👑') || evt.meta.includes('Laptop') || evt.meta.includes('Whitelisted'))) ||
+      (evt.description && (evt.description.includes('Owner') || evt.description.includes('👑') || evt.description.includes('Whitelisted') || evt.description.includes('Simulated') || evt.description.includes('Laptop')))
+    );
+
+    if (filterMode === 'owner_only') return isOwnerEvt;
+    if (filterMode === 'external_only') return !isOwnerEvt;
     return true;
   });
 
@@ -655,11 +707,11 @@ export const getAnalyticsSummary = (
   sessions.forEach((s) => {
     (s.projectInteractions || []).forEach((pi) => {
       const pid = pi.projectId.toLowerCase();
-      if (pid.includes('roamora')) {
+      if (pid.includes('roamora') || pid.includes('travel')) {
         projectCounts.roamora.views++;
         if (pi.action === 'view_modal') projectCounts.roamora.modalOpens++;
         if (pi.action === 'live_demo') projectCounts.roamora.liveClicks++;
-      } else if (pid.includes('jameen')) {
+      } else if (pid.includes('jameen') || pid.includes('restaurant')) {
         projectCounts.jameen.views++;
         if (pi.action === 'view_modal') projectCounts.jameen.modalOpens++;
         if (pi.action === 'live_demo') projectCounts.jameen.liveClicks++;
@@ -671,14 +723,14 @@ export const getAnalyticsSummary = (
     });
   });
 
-  // Also aggregate project interactions from recent events
+  // Also aggregate project interactions from filtered recent events
   recentEvents.forEach((evt: any) => {
     const desc = (evt.description || '').toLowerCase();
-    if (desc.includes('roamora')) {
+    if (desc.includes('roamora') || desc.includes('travel')) {
       projectCounts.roamora.views++;
       if (desc.includes('preview') || desc.includes('modal') || evt.type === 'project_view') projectCounts.roamora.modalOpens++;
       if (desc.includes('standalone') || desc.includes('launched') || desc.includes('live') || evt.type === 'live_demo') projectCounts.roamora.liveClicks++;
-    } else if (desc.includes('jameen')) {
+    } else if (desc.includes('jameen') || desc.includes('restaurant')) {
       projectCounts.jameen.views++;
       if (desc.includes('preview') || desc.includes('modal') || evt.type === 'project_view') projectCounts.jameen.modalOpens++;
       if (desc.includes('standalone') || desc.includes('launched') || desc.includes('live') || evt.type === 'live_demo') projectCounts.jameen.liveClicks++;
@@ -700,7 +752,7 @@ export const getAnalyticsSummary = (
     },
     {
       id: 'jameen',
-      name: 'Jameen — Land Aggregation Engine',
+      name: 'Jameen — Restaurant Dining & QR',
       views: projectCounts.jameen.views,
       modalOpens: projectCounts.jameen.modalOpens,
       liveClicks: projectCounts.jameen.liveClicks,
@@ -738,7 +790,7 @@ export const getAnalyticsSummary = (
   const browserBreakdown = calculateBreakdown((s) => s.browser);
   const referrerBreakdown = calculateBreakdown((s) => s.referrer);
 
-  // Daily Trends based strictly on real sessions
+  // Daily Trends based strictly on real filtered sessions
   const dailyTrends: DailyDataPoint[] = [];
   const now = new Date();
   for (let i = daysLimit - 1; i >= 0; i--) {

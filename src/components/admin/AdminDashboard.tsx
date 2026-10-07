@@ -1292,22 +1292,39 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                         <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
                       </span>
                       <h3 className="font-display text-xl font-bold text-white">
-                        Real-Time Telemetry Event Stream
+                        Real-Time Visitor Event Stream
                       </h3>
                       <span className="px-2.5 py-0.5 rounded-full bg-white/10 text-white/70 text-xs font-mono font-semibold">
-                        {filteredEvents.length} Events Logged
+                        {filteredEvents.length} External Events
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full bg-accent/15 border border-accent/30 text-accent text-[11px] font-mono font-bold">
+                        {filterMode === 'external_only' ? '🛡️ Owner Logs Excluded' : filterMode === 'owner_only' ? '💻 Owner Logs Only' : 'All Logs'}
                       </span>
                     </div>
                     <p className="text-xs text-white/50">
-                      Chronological stream of visitor connections, project demo previews, and form submissions from Supabase.
+                      Chronological stream of external visitor connections, project demo previews, and form submissions from Supabase (Localhost &amp; owner devices excluded).
                     </p>
                   </div>
-                  <button
-                    onClick={handleSimulateVisitor}
-                    className="px-3.5 py-2 rounded-xl bg-accent text-white font-semibold text-xs hover:bg-white hover:text-black transition-all shadow-md shrink-0 flex items-center space-x-1.5 self-start sm:self-auto"
-                  >
-                    <span>+ Trigger Test Event</span>
-                  </button>
+                  <div className="flex items-center space-x-2">
+                    <div className="flex items-center p-1 rounded-xl bg-black/40 border border-white/10 text-xs font-mono">
+                      <button
+                        onClick={() => setFilterMode('external_only')}
+                        className={`px-3 py-1.5 rounded-lg transition-all ${
+                          filterMode === 'external_only' ? 'bg-accent text-white font-bold' : 'text-white/60 hover:text-white'
+                        }`}
+                      >
+                        👥 External Visitors
+                      </button>
+                      <button
+                        onClick={() => setFilterMode('owner_only')}
+                        className={`px-3 py-1.5 rounded-lg transition-all ${
+                          filterMode === 'owner_only' ? 'bg-accent text-white font-bold' : 'text-white/60 hover:text-white'
+                        }`}
+                      >
+                        💻 Owner Logs
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Filters & Search Control Bar */}

@@ -161,13 +161,16 @@ export const Footer: React.FC<FooterProps> = ({ onOpenAdmin }) => {
                 </a>
               </li>
               <li>
-                <a
-                  href="mailto:nedunchezhiyanmaaran@gmail.com"
-                  className="hover:text-white transition-colors flex items-center space-x-2"
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText('nedunchezhiyanmaaran@gmail.com');
+                  }}
+                  title="Click to copy email address"
+                  className="hover:text-white transition-colors flex items-center space-x-2 text-left group"
                 >
-                  <Mail className="w-3.5 h-3.5" />
-                  <span>Email</span>
-                </a>
+                  <Mail className="w-3.5 h-3.5 text-accent group-hover:scale-110 transition-transform" />
+                  <span>Copy Email</span>
+                </button>
               </li>
             </ul>
           </div>

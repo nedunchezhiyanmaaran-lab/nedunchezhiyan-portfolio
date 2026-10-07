@@ -8,11 +8,36 @@ export const PROJECTS: Project[] = [
     category: 'TRAVEL & HOSPITALITY TECH',
     tagline: 'Immersive destination discovery & bespoke travel concierge',
     description: 'An interactive digital travel platform built for curated excursions and luxury stays. Features dynamic multi-filter destination discovery, interactive packages, direct concierge booking flows, and responsive image optimization.',
-    metrics: ['Sub-second Page Loads', 'Dynamic Itinerary Engine', 'Responsive Multi-Device UX'],
+    metrics: ['Sub-second Transitions', 'Dynamic Itinerary Engine', 'Responsive Multi-Device UX'],
     techStack: ['Next.js', 'React', 'TypeScript', 'Tailwind CSS', 'Framer Motion', 'Vercel'],
     liveUrl: 'https://travel-agency-kohl-three.vercel.app/',
-    role: 'Lead Frontend Developer & UI Architect',
+    role: 'Lead Full-Stack Builder & UI Architect',
     timeline: '4 Weeks',
+    startingPoint: {
+      providedByClient: [
+        'Client requested a high-impact interactive travel demo to visualize luxury tours',
+        'Initial concepts for destination showcases, boutique stays, and WhatsApp booking',
+        'Granted complete creative & technical freedom to define UI, UX, and stack',
+      ],
+    },
+    myContribution: {
+      role: 'End-to-End Autonomous Build',
+      responsibilities: [
+        'Designed luxury editorial UI/UX and fluid animations from concept to completion',
+        'Engineered complete Next.js & TypeScript architecture with instant client-side transitions',
+        'Built interactive multi-filter destination search and dynamic pricing tiers',
+        'Integrated direct WhatsApp concierge booking flow and persistent client state',
+        'Optimized media assets and deployed live interactive web demo on Vercel',
+      ],
+    },
+    delivered: {
+      outcome: 'A polished, sub-second interactive travel web demo featuring frictionless mobile booking and refined visual aesthetics.',
+      keyDeliverables: [
+        'Live interactive travel demo with sub-second page transitions',
+        'Instant multi-filter destination catalog & custom itinerary explorer',
+        'Direct WhatsApp concierge lead conversion funnel',
+      ],
+    },
     architectureHighlights: [
       'Engineered client-side caching & instant page transitions for fluid travel browsing',
       'Designed responsive destination card grids with lazy-loaded asset pipelines',
@@ -31,14 +56,39 @@ export const PROJECTS: Project[] = [
     id: 'jameen-restaurant',
     number: '02',
     title: 'Jameen Restaurant & Dining',
-    category: 'REAL ESTATE & HOSPITALITY TECH',
+    category: 'HOSPITALITY TECH & DINING',
     tagline: 'Contactless QR table ordering & culinary catalog engine',
     description: 'A high-performance digital ordering application enabling patrons to browse rich culinary catalogs across Indian, Biryani, Tandoori, Chinese, and Grill specialties, customize platters, and manage table orders seamlessly.',
     metrics: ['Instant QR Table Booting', 'Zero-Latency Cart Sync', 'Multi-Category Menu Filter'],
     techStack: ['Next.js', 'React', 'TypeScript', 'Tailwind CSS', 'Lucide Icons', 'Vercel'],
     liveUrl: 'https://jameen-xi.vercel.app/customer',
-    role: 'Product Engineer & UI Architect',
+    role: 'Product Engineer & Full-Stack Builder',
     timeline: '3 Weeks',
+    startingPoint: {
+      providedByClient: [
+        'Client requested a modern contactless QR dining demo to showcase instant table ordering',
+        'High-level culinary themes (Biryani, Tandoor, Chinese, and Grills)',
+        'Full creative autonomy to craft the visual experience, session logic, and cart state',
+      ],
+    },
+    myContribution: {
+      role: 'End-to-End Autonomous Build',
+      responsibilities: [
+        'Designed dark gold luxury dining theme and responsive mobile-first UI',
+        'Architected dynamic table-aware QR session routing (`/customer?table=X`)',
+        'Built instant culinary catalog filtering and dish add-on customization modal',
+        'Engineered reactive cart state with real-time tax calculation and billing summary',
+        'Deployed live interactive web demo with zero-latency caching on Vercel',
+      ],
+    },
+    delivered: {
+      outcome: 'A frictionless, zero-install digital dining demo that loads instantly upon scanning a table QR code and syncs guest orders in real-time.',
+      keyDeliverables: [
+        'Zero-install QR table ordering demo with instant loading on mobile browsers',
+        'Multi-cuisine interactive menu with spice-level and quantity customizations',
+        'Real-time reactive cart and digital table billing workflow',
+      ],
+    },
     architectureHighlights: [
       'Crafted Next.js client hydration and table-aware session state management',
       'Built reactive cart state with real-time tax, add-on variations, and special notes handling',
@@ -63,8 +113,33 @@ export const PROJECTS: Project[] = [
     metrics: ['AI Lead Scoring Engine', 'Kanban Stage Synchronization', 'Sub-second Full-Text Search'],
     techStack: ['Next.js 14', 'React', 'TypeScript', 'Tailwind CSS', 'Lucide Icons', 'Vercel'],
     liveUrl: 'https://acme-crm-frontend.vercel.app/',
-    role: 'Sole Architect & Product Engineer',
+    role: 'Lead Full-Stack Architect',
     timeline: '5 Weeks',
+    startingPoint: {
+      providedByClient: [
+        'Client requested a high-converting AI CRM demo platform to pitch revenue workflows',
+        'Core requirements for opportunity tracking, deal stages, and smart lead scoring',
+        'Full freedom to design the information architecture, user experience, and frontend engine',
+      ],
+    },
+    myContribution: {
+      role: 'End-to-End Autonomous Build',
+      responsibilities: [
+        'Designed enterprise-grade SaaS interface with dark industrial aesthetics',
+        'Engineered drag-and-drop Kanban pipeline with optimistic UI state updates',
+        'Implemented AI lead scoring engine and deal win-probability analytics',
+        'Built full-text indexing for instant organization and contact search',
+        'Configured CI/CD pipeline and deployed live interactive demo on Vercel',
+      ],
+    },
+    delivered: {
+      outcome: 'A responsive, high-speed SaaS demo platform providing revenue teams instant deal stage clarity, AI-assisted lead scoring, and pipeline analytics.',
+      keyDeliverables: [
+        'Interactive Drag-and-Drop Kanban pipeline with zero UI lag',
+        'Predictive deal probability and automated AI lead scoring engine',
+        'Real-time search and pipeline velocity analytics dashboard',
+      ],
+    },
     architectureHighlights: [
       'Engineered responsive kanban deal pipeline with optimistic drag-and-drop state updates',
       'Built custom AI lead scoring indicators and deal probability calculations',
