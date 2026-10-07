@@ -20,6 +20,10 @@ import {
   Lock,
   Search,
   CheckCircle2,
+  Filter,
+  ChevronLeft,
+  ChevronRight,
+  FileText,
 } from 'lucide-react';
 import {
   getAnalyticsSummary,
@@ -59,6 +63,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
   const [activeHoverPoint, setActiveHoverPoint] = useState<number | null>(null);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [isSupabaseSynced, setIsSupabaseSynced] = useState<boolean>(true);
+
+  // Live Event Stream filters & pagination state
+  const [eventSearch, setEventSearch] = useState<string>('');
+  const [eventTypeFilter, setEventTypeFilter] = useState<string>('all');
+  const [eventSourceFilter, setEventSourceFilter] = useState<string>('all');
+  const [eventPage, setEventPage] = useState<number>(1);
+  const [eventPageSize, setEventPageSize] = useState<number>(15);
 
   // Fetch IP and auto-whitelist on mount
   useEffect(() => {
@@ -707,24 +718,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                   </p>
                 </div>
 
-                <div className="grid grid-cols-12 sm:grid-cols-24 gap-1 sm:gap-1.5 items-end h-40 pt-6">
-                  {summary.hourlyActivity.map((h, i) => {
-                    const maxCount = Math.max(...summary.hourlyActivity.map((a) => a.count), 5);
-                    const pct = Math.max((h.count / maxCount) * 100, 8);
-                    return (
-                      <div key={i} className="flex flex-col items-center space-y-2 group">
-                        <div
-                          className="w-full rounded-t-md bg-accent/40 group-hover:bg-accent transition-all relative"
-                          style={{ height: `${pct}%` }}
-                        >
-                          <span className="absolute -top-7 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity px-1.5 py-0.5 rounded bg-black text-[9px] font-mono text-white whitespace-nowrap z-10">
-                            {h.count} visits
+                <div className="w-full overflow-x-auto pb-3 pt-2 custom-scrollbar">
+                  <div className="min-w-[680px] h-44 flex items-end justify-between gap-1.5 px-1">
+                    {summary.hourlyActivity.map((h, i) => {
+                      const maxCount = Math.max(...summary.hourlyActivity.map((a) => a.count), 1);
+                      const pct = h.count > 0 ? Math.max((h.count / maxCount) * 100, 16) : 6;
+                      return (
+                        <div key={i} className="flex-1 flex flex-col items-center justify-end h-full group">
+                          {/* Bar Track Box */}
+                          <div className="w-full h-32 flex items-end justify-center bg-white/[0.02] rounded-t border-b border-white/10 p-0.5">
+                            <div
+                              className={`w-full max-w-[20px] rounded-t transition-all duration-300 relative ${
+                                h.count > 0
+                                  ? 'bg-accent group-hover:bg-[#ff6b42] shadow-[0_0_12px_rgba(216,76,36,0.35)]'
+                                  : 'bg-white/10 group-hover:bg-white/20'
+                              }`}
+                              style={{ height: `${pct}%` }}
+                            >
+                              {/* Hover Tooltip */}
+                              <span className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity px-2 py-0.5 rounded bg-black/95 border border-white/20 text-[9px] font-mono text-white whitespace-nowrap z-20 pointer-events-none shadow-xl">
+                                {h.label} IST · {h.count} {h.count === 1 ? 'visit' : 'visits'}
+                              </span>
+                            </div>
+                          </div>
+                          {/* Hour text label */}
+                          <span className={`text-[9px] font-mono mt-2 transition-colors ${h.count > 0 ? 'text-accent font-bold' : 'text-white/40'}`}>
+                            {h.hour}h
                           </span>
                         </div>
-                        <span className="text-[9px] font-mono text-white/40">{h.hour}h</span>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
 
@@ -1201,62 +1225,316 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
           )}
 
           {/* TAB 6: LIVE EVENT STREAM */}
-          {activeTab === 'stream' && (
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                  <h3 className="font-display text-xl font-bold text-white">
-                    Real-Time Telemetry Event Stream
-                  </h3>
-                  <p className="text-xs text-white/50">
-                    Live raw chronological stream of interactions and visitors.
-                  </p>
-                </div>
-                <button
-                  onClick={handleSimulateVisitor}
-                  className="px-3 py-1.5 rounded-xl bg-accent text-white font-semibold text-xs hover:bg-white hover:text-black transition-all"
-                >
-                  + Trigger Live Event
-                </button>
-              </div>
+          {activeTab === 'stream' && (() => {
+            const rawEvents = summary.recentEvents || [];
 
-              <div className="p-6 rounded-3xl bg-[#181816] border border-white/10 space-y-3">
-                {summary.recentEvents.length === 0 ? (
-                  <div className="p-8 text-center text-white/40 text-xs font-mono">
-                    No recent events logged yet.
-                  </div>
-                ) : (
-                  summary.recentEvents.map((evt) => (
-                    <div
-                      key={evt.id}
-                      className="p-3.5 rounded-xl bg-white/[0.02] border border-white/5 flex items-center justify-between gap-4 text-xs"
-                    >
-                      <div className="flex items-center space-x-3">
-                        <span
-                          className={`w-2 h-2 rounded-full ${
-                            evt.type === 'contact_submit'
-                              ? 'bg-accent animate-ping'
-                              : evt.type === 'project_view'
-                              ? 'bg-blue-400'
-                              : 'bg-emerald-400'
-                          }`}
-                        />
-                        <span className="font-bold text-white">{evt.description}</span>
-                        {evt.meta && (
-                          <span className="font-mono text-white/40 text-[11px] hidden sm:inline">
-                            ({evt.meta})
-                          </span>
-                        )}
-                      </div>
-                      <span className="font-mono text-white/40 text-[10px] shrink-0">
-                        {new Date(evt.timestamp).toLocaleTimeString()}
+            // Compute counts for filter pills
+            const typeCounts = {
+              all: rawEvents.length,
+              visit: rawEvents.filter((e) => e.type === 'visit').length,
+              project_view: rawEvents.filter((e) => e.type === 'project_view').length,
+              live_demo: rawEvents.filter((e) => e.type === 'live_demo').length,
+              contact_submit: rawEvents.filter((e) => e.type === 'contact_submit').length,
+              section_read: rawEvents.filter((e) => e.type === 'section_read').length,
+            };
+
+            const filteredEvents = rawEvents.filter((evt) => {
+              // Type filter
+              if (eventTypeFilter !== 'all') {
+                if (evt.type !== eventTypeFilter) return false;
+              }
+
+              // Source filter
+              if (eventSourceFilter !== 'all') {
+                const desc = evt.description.toLowerCase();
+                if (eventSourceFilter === 'linkedin' && !desc.includes('linkedin')) return false;
+                if (eventSourceFilter === 'reddit' && !desc.includes('reddit')) return false;
+                if (eventSourceFilter === 'safari' && !desc.includes('safari')) return false;
+                if (eventSourceFilter === 'android' && !desc.includes('android')) return false;
+                if (eventSourceFilter === 'direct' && !desc.includes('direct')) return false;
+              }
+
+              // Search query
+              if (eventSearch.trim()) {
+                const q = eventSearch.toLowerCase();
+                const matchesDesc = evt.description.toLowerCase().includes(q);
+                const matchesMeta = (evt.meta || '').toLowerCase().includes(q);
+                const matchesType = evt.type.toLowerCase().includes(q);
+                return matchesDesc || matchesMeta || matchesType;
+              }
+
+              return true;
+            });
+
+            const totalEventPages = Math.max(Math.ceil(filteredEvents.length / eventPageSize), 1);
+            const currentPage = Math.min(eventPage, totalEventPages);
+            const paginatedEvents = filteredEvents.slice((currentPage - 1) * eventPageSize, currentPage * eventPageSize);
+
+            const formatEventDateTime = (isoString: string) => {
+              try {
+                const d = new Date(isoString);
+                const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+                const timeStr = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+                return { dateStr, timeStr };
+              } catch {
+                return { dateStr: 'Recent', timeStr: isoString };
+              }
+            };
+
+            return (
+              <div className="space-y-6">
+                {/* Header Strip */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center space-x-2.5">
+                      <span className="relative flex h-2.5 w-2.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                      </span>
+                      <h3 className="font-display text-xl font-bold text-white">
+                        Real-Time Telemetry Event Stream
+                      </h3>
+                      <span className="px-2.5 py-0.5 rounded-full bg-white/10 text-white/70 text-xs font-mono font-semibold">
+                        {filteredEvents.length} Events Logged
                       </span>
                     </div>
-                  ))
+                    <p className="text-xs text-white/50">
+                      Chronological stream of visitor connections, project demo previews, and form submissions from Supabase.
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleSimulateVisitor}
+                    className="px-3.5 py-2 rounded-xl bg-accent text-white font-semibold text-xs hover:bg-white hover:text-black transition-all shadow-md shrink-0 flex items-center space-x-1.5 self-start sm:self-auto"
+                  >
+                    <span>+ Trigger Test Event</span>
+                  </button>
+                </div>
+
+                {/* Filters & Search Control Bar */}
+                <div className="p-5 rounded-3xl bg-[#181816] border border-white/10 space-y-4">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    {/* Search Box */}
+                    <div className="relative flex-1">
+                      <Search className="w-4 h-4 text-white/40 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        placeholder="Search events by platform, OS, browser, or project..."
+                        value={eventSearch}
+                        onChange={(e) => {
+                          setEventSearch(e.target.value);
+                          setEventPage(1);
+                        }}
+                        className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-black/40 border border-white/10 text-xs text-white focus:outline-none focus:border-accent"
+                      />
+                      {eventSearch && (
+                        <button
+                          onClick={() => setEventSearch('')}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white text-xs font-mono"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Source Channel Dropdown */}
+                    <div className="flex items-center space-x-2 shrink-0">
+                      <Filter className="w-3.5 h-3.5 text-accent" />
+                      <select
+                        value={eventSourceFilter}
+                        onChange={(e) => {
+                          setEventSourceFilter(e.target.value);
+                          setEventPage(1);
+                        }}
+                        className="px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-xs font-mono text-white/80 focus:outline-none focus:border-accent"
+                      >
+                        <option value="all">All Traffic Sources</option>
+                        <option value="linkedin">LinkedIn Referrals</option>
+                        <option value="reddit">Reddit Traffic</option>
+                        <option value="safari">Safari / macOS</option>
+                        <option value="android">Android / Mobile</option>
+                        <option value="direct">Direct Connections</option>
+                      </select>
+                    </div>
+
+                    {/* Page Size Selector */}
+                    <div className="flex items-center space-x-2 shrink-0">
+                      <span className="text-[11px] font-mono text-white/40">Per Page:</span>
+                      <select
+                        value={eventPageSize}
+                        onChange={(e) => {
+                          setEventPageSize(Number(e.target.value));
+                          setEventPage(1);
+                        }}
+                        className="px-2.5 py-2 rounded-xl bg-black/40 border border-white/10 text-xs font-mono text-white/80 focus:outline-none focus:border-accent"
+                      >
+                        <option value="10">10</option>
+                        <option value="15">15</option>
+                        <option value="30">30</option>
+                        <option value="50">50</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Event Type Filter Pills */}
+                  <div className="flex flex-wrap gap-2 pt-1 border-t border-white/5">
+                    {[
+                      { key: 'all', label: 'All Events', count: typeCounts.all },
+                      { key: 'visit', label: 'Visits & Connects', count: typeCounts.visit },
+                      { key: 'project_view', label: 'Project Previews', count: typeCounts.project_view },
+                      { key: 'live_demo', label: 'Live App Launches', count: typeCounts.live_demo },
+                      { key: 'contact_submit', label: 'Inquiries', count: typeCounts.contact_submit },
+                      { key: 'section_read', label: 'Section Reads', count: typeCounts.section_read },
+                    ].map((btn) => (
+                      <button
+                        key={btn.key}
+                        onClick={() => {
+                          setEventTypeFilter(btn.key);
+                          setEventPage(1);
+                        }}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-mono transition-all flex items-center space-x-1.5 ${
+                          eventTypeFilter === btn.key
+                            ? 'bg-accent text-white font-bold shadow-sm'
+                            : 'bg-white/[0.04] text-white/60 hover:bg-white/10 hover:text-white'
+                        }`}
+                      >
+                        <span>{btn.label}</span>
+                        <span
+                          className={`px-1.5 py-0.2 rounded-md text-[10px] ${
+                            eventTypeFilter === btn.key
+                              ? 'bg-black/30 text-white'
+                              : 'bg-white/10 text-white/50'
+                          }`}
+                        >
+                          {btn.count}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Event Cards List */}
+                <div className="p-6 rounded-3xl bg-[#181816] border border-white/10 space-y-3">
+                  {paginatedEvents.length === 0 ? (
+                    <div className="p-12 text-center text-white/40 text-xs font-mono space-y-2">
+                      <p>No matching events found for current filters.</p>
+                      <button
+                        onClick={() => {
+                          setEventSearch('');
+                          setEventTypeFilter('all');
+                          setEventSourceFilter('all');
+                        }}
+                        className="text-accent underline text-xs"
+                      >
+                        Reset filters
+                      </button>
+                    </div>
+                  ) : (
+                    paginatedEvents.map((evt) => {
+                      const { dateStr, timeStr } = formatEventDateTime(evt.timestamp);
+                      return (
+                        <div
+                          key={evt.id}
+                          className="p-4 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-white/15 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs group"
+                        >
+                          <div className="flex items-start sm:items-center space-x-3.5">
+                            {/* Status Glyph */}
+                            <div className="mt-0.5 sm:mt-0 p-2 rounded-xl bg-white/[0.04] border border-white/5 shrink-0 flex items-center justify-center">
+                              {evt.type === 'contact_submit' && <Mail className="w-3.5 h-3.5 text-accent" />}
+                              {evt.type === 'project_view' && <Eye className="w-3.5 h-3.5 text-blue-400" />}
+                              {evt.type === 'live_demo' && <ExternalLink className="w-3.5 h-3.5 text-amber-400" />}
+                              {evt.type === 'section_read' && <FileText className="w-3.5 h-3.5 text-purple-400" />}
+                              {evt.type === 'visit' && <Globe className="w-3.5 h-3.5 text-emerald-400" />}
+                            </div>
+
+                            <div className="space-y-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-bold text-white leading-snug">
+                                  {evt.description}
+                                </span>
+                                {evt.meta && (
+                                  <span
+                                    className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-medium border ${
+                                      evt.type === 'section_read'
+                                        ? 'bg-purple-500/10 border-purple-500/30 text-purple-300'
+                                        : evt.type === 'project_view'
+                                        ? 'bg-blue-500/10 border-blue-500/30 text-blue-300'
+                                        : evt.type === 'live_demo'
+                                        ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+                                        : evt.type === 'contact_submit'
+                                        ? 'bg-accent/10 border-accent/30 text-accent'
+                                        : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                                    }`}
+                                  >
+                                    {evt.meta}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Prominent Date & Time */}
+                          <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center border-t sm:border-t-0 border-white/5 pt-2 sm:pt-0 shrink-0 text-right">
+                            <span className="font-mono text-white/80 text-xs font-semibold">
+                              {dateStr}
+                            </span>
+                            <span className="font-mono text-accent text-[11px] font-medium">
+                              {timeStr}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                {/* Pagination Controls Bar */}
+                {totalEventPages > 1 && (
+                  <div className="p-4 rounded-2xl bg-[#181816] border border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3">
+                    <span className="text-xs font-mono text-white/50">
+                      Showing {(currentPage - 1) * eventPageSize + 1}–{Math.min(currentPage * eventPageSize, filteredEvents.length)} of {filteredEvents.length} events (Page {currentPage} of {totalEventPages})
+                    </span>
+
+                    <div className="flex items-center space-x-2">
+                      <button
+                        disabled={currentPage <= 1}
+                        onClick={() => setEventPage((p) => Math.max(p - 1, 1))}
+                        className="px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/10 text-xs font-mono text-white/70 hover:bg-white/10 hover:text-white disabled:opacity-30 disabled:pointer-events-none flex items-center space-x-1"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" />
+                        <span>Prev</span>
+                      </button>
+
+                      {Array.from({ length: Math.min(totalEventPages, 5) }, (_, i) => {
+                        const pageNum = i + 1;
+                        return (
+                          <button
+                            key={pageNum}
+                            onClick={() => setEventPage(pageNum)}
+                            className={`w-8 h-8 rounded-xl text-xs font-mono font-bold transition-all ${
+                              currentPage === pageNum
+                                ? 'bg-accent text-white shadow-md'
+                                : 'bg-white/[0.03] text-white/60 hover:bg-white/10 hover:text-white'
+                            }`}
+                          >
+                            {pageNum}
+                          </button>
+                        );
+                      })}
+
+                      <button
+                        disabled={currentPage >= totalEventPages}
+                        onClick={() => setEventPage((p) => Math.min(p + 1, totalEventPages))}
+                        className="px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/10 text-xs font-mono text-white/70 hover:bg-white/10 hover:text-white disabled:opacity-30 disabled:pointer-events-none flex items-center space-x-1"
+                      >
+                        <span>Next</span>
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
                 )}
               </div>
-            </div>
-          )}
+            );
+          })()}
         </main>
       </div>
     </div>

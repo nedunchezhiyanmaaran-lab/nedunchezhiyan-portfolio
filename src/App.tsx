@@ -10,7 +10,7 @@ import { Process } from './components/Process';
 import { Contact } from './components/Contact';
 import { Footer } from './components/Footer';
 import { AdminDashboard } from './components/admin/AdminDashboard';
-import { initVisitorTracking } from './utils/analytics';
+import { initVisitorTracking, trackSectionView } from './utils/analytics';
 
 export const App: React.FC = () => {
   const [isAdminOpen, setIsAdminOpen] = useState<boolean>(() => {
@@ -36,8 +36,27 @@ export const App: React.FC = () => {
     window.addEventListener('hashchange', handleHashChange);
     window.addEventListener('keydown', handleKeyDown);
 
+    // Section scroll observer for analytics
+    const sectionIds = ['work', 'services', 'about', 'process', 'contact'];
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting && entry.target.id) {
+            trackSectionView(entry.target.id);
+          }
+        });
+      },
+      { threshold: 0.25 }
+    );
+
+    sectionIds.forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) observer.observe(el);
+    });
+
     return () => {
       cleanup();
+      observer.disconnect();
       window.removeEventListener('hashchange', handleHashChange);
       window.removeEventListener('keydown', handleKeyDown);
     };

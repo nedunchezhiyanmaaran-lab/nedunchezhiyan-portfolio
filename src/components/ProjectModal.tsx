@@ -5,6 +5,8 @@ import type { Project } from '../types';
 import { LottiePlayer } from './LottiePlayer';
 import { LOTTIE_URLS } from '../data/lottieAnimations';
 
+import { trackProjectInteraction } from '../utils/analytics';
+
 interface ProjectModalProps {
   project: Project | null;
   onClose: () => void;
@@ -15,6 +17,10 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({ project, onClose }) 
   const [iframeKey, setIframeKey] = useState(1);
 
   if (!project) return null;
+
+  const handleLaunchExternal = () => {
+    trackProjectInteraction(project.id, 'live_demo');
+  };
 
   return (
     <AnimatePresence>
@@ -109,6 +115,7 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({ project, onClose }) 
                     href={project.liveUrl}
                     target="_blank"
                     rel="noopener noreferrer"
+                    onClick={handleLaunchExternal}
                     className="inline-flex items-center space-x-2 px-6 py-3 rounded-full bg-ink text-[#FAF9F5] text-xs font-semibold tracking-wide hover:bg-accent transition-all duration-300 shadow-sm"
                   >
                     <span>Launch Production Deployment</span>

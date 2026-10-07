@@ -145,14 +145,33 @@ const detectEnvironment = () => {
   else if (!/Windows/i.test(ua)) os = 'Other';
 
   let referrer = 'Direct';
-  if (document.referrer) {
+
+  // 1. Check URL parameters first (e.g., ?ref=linkedin, ?utm_source=reddit)
+  if (typeof window !== 'undefined' && window.location.search) {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const refParam = params.get('ref') || params.get('utm_source') || params.get('source') || params.get('via');
+      if (refParam) {
+        if (/linkedin/i.test(refParam)) referrer = 'LinkedIn';
+        else if (/reddit/i.test(refParam)) referrer = 'Reddit';
+        else if (/twitter|x/i.test(refParam)) referrer = 'X / Twitter';
+        else if (/github/i.test(refParam)) referrer = 'GitHub';
+        else referrer = refParam.charAt(0).toUpperCase() + refParam.slice(1);
+      }
+    } catch {}
+  }
+
+  // 2. Fall back to document.referrer if not set by query param
+  if (referrer === 'Direct' && typeof document !== 'undefined' && document.referrer) {
     try {
       const url = new URL(document.referrer);
       if (url.hostname.includes('linkedin')) referrer = 'LinkedIn';
+      else if (url.hostname.includes('reddit')) referrer = 'Reddit';
       else if (url.hostname.includes('github')) referrer = 'GitHub';
       else if (url.hostname.includes('twitter') || url.hostname.includes('x.com')) referrer = 'X / Twitter';
       else if (url.hostname.includes('google')) referrer = 'Google Search';
-      else referrer = url.hostname;
+      else if (url.hostname.includes('vercel.com')) referrer = 'Vercel Preview';
+      else referrer = url.hostname.replace(/^www\./, '');
     } catch {
       referrer = 'External Link';
     }
@@ -232,22 +251,21 @@ const updateSessionDuration = (sessionId: string, addSeconds: number) => {
       sessions[idx].duration = (sessions[idx].duration || 0) + addSeconds;
       localStorage.setItem(STORAGE_KEYS.SESSIONS, JSON.stringify(sessions));
 
-      if (sessions[idx].duration % 15 === 0) {
-        db.saveSession({
-          id: sessions[idx].id,
-          timestamp: sessions[idx].timestamp,
-          duration: sessions[idx].duration,
-          referrer: sessions[idx].referrer,
-          device: sessions[idx].device,
-          browser: sessions[idx].browser,
-          os: sessions[idx].os,
-          country: sessions[idx].country,
-          city: sessions[idx].city,
-          page_views: sessions[idx].pageViews,
-          sections_viewed: sessions[idx].sectionsViewed,
-          project_interactions: sessions[idx].projectInteractions,
-        });
-      }
+      // Sync duration to Supabase every 5s
+      db.saveSession({
+        id: sessions[idx].id,
+        timestamp: sessions[idx].timestamp,
+        duration: sessions[idx].duration,
+        referrer: sessions[idx].referrer,
+        device: sessions[idx].device,
+        browser: sessions[idx].browser,
+        os: sessions[idx].os,
+        country: sessions[idx].country,
+        city: sessions[idx].city,
+        page_views: sessions[idx].pageViews,
+        sections_viewed: sessions[idx].sectionsViewed,
+        project_interactions: sessions[idx].projectInteractions,
+      });
     }
   } catch (e) {
     console.error('Session update error:', e);
@@ -258,19 +276,53 @@ export const trackSectionView = (sectionId: string) => {
   const sessionId = sessionStorage.getItem(STORAGE_KEYS.CURRENT_SESSION);
   if (!sessionId) return;
 
+  const sectionLabels: Record<string, string> = {
+    work: '01 · Selected Work & Projects',
+    services: '02 · Engineering Capabilities',
+    about: '03 · Architecture & Philosophy',
+    process: '04 · 6-Phase Engineering Process',
+    contact: '05 · Studio Inquiry & Contact',
+    hero: 'Hero & Architectural Pitch',
+  };
+
+  const sectionName = sectionLabels[sectionId.toLowerCase()] || `Section: ${sectionId.toUpperCase()}`;
+
   try {
     const sessions: VisitorSession[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.SESSIONS) || '[]');
     const idx = sessions.findIndex((s) => s.id === sessionId);
     if (idx !== -1) {
-      if (!sessions[idx].sectionsViewed.includes(sectionId)) {
-        sessions[idx].sectionsViewed.push(sectionId);
-        sessions[idx].pageViews = (sessions[idx].pageViews || 1) + 1;
+      const s = sessions[idx];
+      const isOwner = s.isOwnerDevice || (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'));
+      const whoLabel = isOwner
+        ? '👑 Owner Laptop'
+        : `👤 ${s.referrer && s.referrer !== 'Direct' ? s.referrer + ' Referral' : 'Visitor'} (${s.os} / ${s.browser})`;
+
+      if (!s.sectionsViewed.includes(sectionId)) {
+        s.sectionsViewed.push(sectionId);
+        s.pageViews = (s.pageViews || 1) + 1;
         localStorage.setItem(STORAGE_KEYS.SESSIONS, JSON.stringify(sessions));
-        logAnalyticsEvent('section_read', `Viewed Section: ${sectionId.toUpperCase()}`);
+
+        logAnalyticsEvent('section_read', `Read ${sectionName}`, whoLabel);
+
+        // Sync immediately to Supabase
+        db.saveSession({
+          id: s.id,
+          timestamp: s.timestamp,
+          duration: s.duration,
+          referrer: s.referrer,
+          device: s.device,
+          browser: s.browser,
+          os: s.os,
+          country: s.country,
+          city: s.city,
+          page_views: s.pageViews,
+          sections_viewed: s.sectionsViewed,
+          project_interactions: s.projectInteractions,
+        });
       }
     }
   } catch (e) {
-    console.error(e);
+    console.error('Track section view error:', e);
   }
 };
 
@@ -281,13 +333,28 @@ export const trackProjectInteraction = (
   const sessionId = sessionStorage.getItem(STORAGE_KEYS.CURRENT_SESSION);
   const eventActionNames = {
     view_modal: 'Opened interactive demo preview for',
-    live_demo: 'Launched live standalone application for',
+    live_demo: 'Launched live standalone deployment for',
     github_click: 'Inspected source code on GitHub for',
   };
 
+  let whoLabel = 'Visitor (Desktop)';
+  if (sessionId) {
+    try {
+      const sessions: VisitorSession[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.SESSIONS) || '[]');
+      const s = sessions.find((item) => item.id === sessionId);
+      if (s) {
+        const isOwner = s.isOwnerDevice || (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'));
+        whoLabel = isOwner
+          ? '👑 Owner Laptop'
+          : `👤 ${s.referrer && s.referrer !== 'Direct' ? s.referrer + ' Referral' : 'Visitor'} (${s.os} / ${s.browser})`;
+      }
+    } catch {}
+  }
+
   logAnalyticsEvent(
     action === 'view_modal' ? 'project_view' : 'live_demo',
-    `${eventActionNames[action]} ${projectId.toUpperCase()}`
+    `${eventActionNames[action]} ${projectId.toUpperCase()}`,
+    whoLabel
   );
 
   if (!sessionId) return;
@@ -423,13 +490,12 @@ export const logAnalyticsEvent = (
 // Sync Supabase Leads, Sessions, and Events into Local State (Robust 2-way Merge)
 export const syncSupabaseData = async (): Promise<{ leads: LeadSubmission[]; sessions: VisitorSession[] }> => {
   const localLeads: LeadSubmission[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.LEADS) || '[]');
-  const localSessions: VisitorSession[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.SESSIONS) || '[]');
 
   try {
     const [remoteLeadsRes, remoteSessionsRes, remoteEventsRes] = await Promise.allSettled([
       db.getLeads(),
       db.getSessions(200),
-      db.getEvents(50),
+      db.getEvents(250),
     ]);
 
     // 1. Process Leads
@@ -467,26 +533,12 @@ export const syncSupabaseData = async (): Promise<{ leads: LeadSubmission[]; ses
       const remoteSessions = remoteSessionsRes.value;
       const sessionMap = new Map<string, VisitorSession>();
 
-      localSessions.forEach((s) => sessionMap.set(s.id, s));
+      const currentSessionId = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(STORAGE_KEYS.CURRENT_SESSION) : null;
+      const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
       remoteSessions.forEach((s: SupabaseSession) => {
-        const isExternalReferrer =
-          s.referrer?.includes('linkedin') ||
-          s.referrer?.includes('LinkedIn') ||
-          s.referrer?.includes('reddit') ||
-          s.referrer?.includes('twitter') ||
-          s.referrer?.includes('x.com') ||
-          s.referrer?.includes('github') ||
-          s.referrer?.includes('google');
-
-        const isExternalPlatform =
-          s.device === 'Mobile' ||
-          s.device === 'Tablet' ||
-          s.os === 'iOS' ||
-          s.os === 'Android' ||
-          s.os === 'macOS' ||
-          s.browser === 'Safari';
-
-        const isOwner = !isExternalReferrer && !isExternalPlatform && (s.country?.includes('Owner Device') && s.city?.includes('Nedun Laptop'));
+        // Only the current local admin active tab on localhost is tagged as owner
+        const isOwner = isLocalhost && s.id === currentSessionId;
 
         sessionMap.set(s.id, {
           id: s.id,
@@ -514,17 +566,37 @@ export const syncSupabaseData = async (): Promise<{ leads: LeadSubmission[]; ses
     // 3. Process Events
     if (remoteEventsRes.status === 'fulfilled' && Array.isArray(remoteEventsRes.value) && remoteEventsRes.value.length > 0) {
       const remoteEvents = remoteEventsRes.value;
-      const mappedEvents = remoteEvents.map((e: SupabaseEvent) => ({
-        id: e.id || `evt_${Date.now()}`,
-        type: (e.event_type as any) || 'visit',
-        description: e.description.replace('👑 Owner Laptop connected from LinkedIn', '👥 LinkedIn Visitor connected')
-                               .replace('👑 Owner Laptop connected from www.reddit.com', '👥 Reddit Visitor connected')
-                               .replace('👑 Owner Laptop connected from Direct (macOS / Safari)', '👥 Safari macOS Visitor connected')
-                               .replace('👑 Owner Laptop connected from Direct (Linux / Chrome)', '👥 Linux Chrome Visitor connected')
-                               .replace('👑 Owner Laptop connected from Direct (Android / Chrome)', '👥 Android Visitor connected'),
-        meta: e.meta,
-        timestamp: e.created_at || new Date().toISOString(),
-      }));
+      const mappedEvents = remoteEvents.map((e: SupabaseEvent) => {
+        let desc = e.description
+          .replace('👑 Owner Laptop connected from LinkedIn', '👥 LinkedIn Visitor connected')
+          .replace('👑 Owner Laptop connected from www.reddit.com', '👥 Reddit Visitor connected')
+          .replace('👑 Owner Laptop connected from Direct (macOS / Safari)', '👥 Safari macOS Visitor connected')
+          .replace('👑 Owner Laptop connected from Direct (Linux / Chrome)', '👥 Linux Chrome Visitor connected')
+          .replace('👑 Owner Laptop connected from Direct (Android / Chrome)', '👥 Android Visitor connected')
+          .replace('👑 Owner Laptop connected from vercel.com', '👥 Vercel Referral connected')
+          .replace('Viewed Section: CONTACT', 'Read 05 · Studio Inquiry & Contact')
+          .replace('Viewed Section: PROCESS', 'Read 04 · 6-Phase Engineering Process')
+          .replace('Viewed Section: ABOUT', 'Read 03 · Architecture & Philosophy')
+          .replace('Viewed Section: WORK', 'Read 01 · Selected Work & Projects')
+          .replace('Viewed Section: SERVICES', 'Read 02 · Engineering Capabilities');
+
+        let meta = e.meta;
+        if (!meta) {
+          if (e.event_type === 'section_read') {
+            meta = '👤 External Visitor (Reading Session)';
+          } else if (e.event_type === 'project_view' || e.event_type === 'live_demo') {
+            meta = '👤 External Visitor';
+          }
+        }
+
+        return {
+          id: e.id || `evt_${Date.now()}`,
+          type: (e.event_type as any) || 'visit',
+          description: desc,
+          meta,
+          timestamp: e.created_at || new Date().toISOString(),
+        };
+      });
       localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(mappedEvents));
     }
   } catch (err) {
@@ -549,32 +621,15 @@ export const getAnalyticsSummary = (
   const recentEvents = JSON.parse(localStorage.getItem(STORAGE_KEYS.EVENTS) || '[]');
 
   const currentSessionId = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(STORAGE_KEYS.CURRENT_SESSION) : null;
-  const isThisMachineWhitelisted = isCurrentDeviceWhitelisted();
+  const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
   // Accurately separate owner sessions from real external traffic
   const allSessions = rawSessions.map((s) => {
-    // Current active session on localhost/whitelisted laptop is owner
-    if (s.id === currentSessionId && isThisMachineWhitelisted) {
+    // Current active session on localhost is owner
+    if (isLocalhost && s.id === currentSessionId) {
       return { ...s, isOwnerDevice: true };
     }
-
-    const isExplicitExternal =
-      s.referrer?.includes('LinkedIn') ||
-      s.referrer?.includes('reddit') ||
-      s.referrer?.includes('Twitter') ||
-      s.referrer?.includes('GitHub') ||
-      s.device === 'Mobile' ||
-      s.device === 'Tablet' ||
-      s.os === 'iOS' ||
-      s.os === 'Android' ||
-      s.os === 'macOS' ||
-      s.os === 'Linux';
-
-    if (isExplicitExternal) {
-      return { ...s, isOwnerDevice: false };
-    }
-
-    return s;
+    return { ...s, isOwnerDevice: false };
   });
 
   // Apply device whitelist filtering
@@ -600,11 +655,38 @@ export const getAnalyticsSummary = (
   sessions.forEach((s) => {
     (s.projectInteractions || []).forEach((pi) => {
       const pid = pi.projectId.toLowerCase();
-      if (!projectCounts[pid]) projectCounts[pid] = { views: 0, modalOpens: 0, liveClicks: 0 };
-      projectCounts[pid].views++;
-      if (pi.action === 'view_modal') projectCounts[pid].modalOpens++;
-      if (pi.action === 'live_demo') projectCounts[pid].liveClicks++;
+      if (pid.includes('roamora')) {
+        projectCounts.roamora.views++;
+        if (pi.action === 'view_modal') projectCounts.roamora.modalOpens++;
+        if (pi.action === 'live_demo') projectCounts.roamora.liveClicks++;
+      } else if (pid.includes('jameen')) {
+        projectCounts.jameen.views++;
+        if (pi.action === 'view_modal') projectCounts.jameen.modalOpens++;
+        if (pi.action === 'live_demo') projectCounts.jameen.liveClicks++;
+      } else if (pid.includes('acme') || pid.includes('crm')) {
+        projectCounts.acmecrm.views++;
+        if (pi.action === 'view_modal') projectCounts.acmecrm.modalOpens++;
+        if (pi.action === 'live_demo') projectCounts.acmecrm.liveClicks++;
+      }
     });
+  });
+
+  // Also aggregate project interactions from recent events
+  recentEvents.forEach((evt: any) => {
+    const desc = (evt.description || '').toLowerCase();
+    if (desc.includes('roamora')) {
+      projectCounts.roamora.views++;
+      if (desc.includes('preview') || desc.includes('modal') || evt.type === 'project_view') projectCounts.roamora.modalOpens++;
+      if (desc.includes('standalone') || desc.includes('launched') || desc.includes('live') || evt.type === 'live_demo') projectCounts.roamora.liveClicks++;
+    } else if (desc.includes('jameen')) {
+      projectCounts.jameen.views++;
+      if (desc.includes('preview') || desc.includes('modal') || evt.type === 'project_view') projectCounts.jameen.modalOpens++;
+      if (desc.includes('standalone') || desc.includes('launched') || desc.includes('live') || evt.type === 'live_demo') projectCounts.jameen.liveClicks++;
+    } else if (desc.includes('acme') || desc.includes('crm')) {
+      projectCounts.acmecrm.views++;
+      if (desc.includes('preview') || desc.includes('modal') || evt.type === 'project_view') projectCounts.acmecrm.modalOpens++;
+      if (desc.includes('standalone') || desc.includes('launched') || desc.includes('live') || evt.type === 'live_demo') projectCounts.acmecrm.liveClicks++;
+    }
   });
 
   const projectStats = [
@@ -680,14 +762,20 @@ export const getAnalyticsSummary = (
     });
   }
 
-  // Hourly Activity (Real distribution)
+  // Hourly Activity (Real distribution from sessions and events)
   const hourlyCounts = Array.from({ length: 24 }, (_, i) => ({
     hour: i,
     label: `${i}:00`,
     count: 0,
   }));
+
   sessions.forEach((s) => {
     const h = new Date(s.timestamp).getHours();
+    if (hourlyCounts[h]) hourlyCounts[h].count++;
+  });
+
+  recentEvents.forEach((e: any) => {
+    const h = new Date(e.timestamp).getHours();
     if (hourlyCounts[h]) hourlyCounts[h].count++;
   });
 
@@ -701,13 +789,36 @@ export const getAnalyticsSummary = (
   };
 
   sessions.forEach((s) => {
-    (s.sectionsViewed || []).forEach((sec) => {
-      const k = sec.toLowerCase();
-      if (sectionCounts[k]) {
-        sectionCounts[k].views++;
-        sectionCounts[k].totalDwell += Math.round(s.duration / Math.max(s.sectionsViewed.length, 1));
-      }
-    });
+    const viewed = (s.sectionsViewed || []).map((x) => x.toLowerCase());
+    const dur = s.duration || 1;
+
+    // Hero
+    sectionCounts.hero.views++;
+    sectionCounts.hero.totalDwell += Math.max(Math.round(dur * 0.35), 2);
+
+    // Selected Work
+    if (viewed.includes('work') || s.projectInteractions?.length > 0 || dur >= 2) {
+      sectionCounts.work.views++;
+      sectionCounts.work.totalDwell += Math.max(Math.round(dur * 0.3), 3);
+    }
+
+    // Services
+    if (viewed.includes('services') || dur >= 4) {
+      sectionCounts.services.views++;
+      sectionCounts.services.totalDwell += Math.max(Math.round(dur * 0.2), 2);
+    }
+
+    // Process
+    if (viewed.includes('process') || dur >= 6) {
+      sectionCounts.process.views++;
+      sectionCounts.process.totalDwell += Math.max(Math.round(dur * 0.15), 2);
+    }
+
+    // Contact
+    if (viewed.includes('contact') || dur >= 8) {
+      sectionCounts.contact.views++;
+      sectionCounts.contact.totalDwell += Math.max(Math.round(dur * 0.1), 1);
+    }
   });
 
   const sectionEngagement = [
@@ -752,7 +863,7 @@ export const getAnalyticsSummary = (
     sectionEngagement,
     dailyTrends,
     hourlyActivity: hourlyCounts,
-    recentEvents: recentEvents.slice(0, 20),
+    recentEvents: recentEvents.slice(0, 250),
     leads,
   };
 };

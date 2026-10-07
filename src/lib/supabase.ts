@@ -175,7 +175,7 @@ export const db = {
     }
   },
 
-  async getEvents(limit = 50): Promise<SupabaseEvent[]> {
+  async getEvents(limit = 250): Promise<SupabaseEvent[]> {
     try {
       const { data, error } = await supabase
         .from('analytics_events')
