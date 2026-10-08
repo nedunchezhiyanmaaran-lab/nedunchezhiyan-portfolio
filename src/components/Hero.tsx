@@ -1,7 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowDown, ArrowUpRight, MessageSquare, Send, CheckCircle2, Sparkles } from 'lucide-react';
+import { ArrowDown, ArrowUpRight, MessageSquare, Send, CheckCircle2, Sparkles, Code2 } from 'lucide-react';
 import { submitVisitorFeedback } from '../utils/analytics';
+import { getStoredIntent, getPersonalizedCtaLabel, type UserIntent } from '../utils/intent';
+import { trackEvent } from '../utils/sourceTracking';
+import { IntentModalOrCard } from './IntentModalOrCard';
 
 interface HeroProps {
   onStartProject: () => void;
@@ -25,6 +28,36 @@ export const Hero: React.FC<HeroProps> = ({ onStartProject, onViewWork }) => {
   const [feedbackMsg, setFeedbackMsg] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [intent, setIntent] = useState<UserIntent | null>(getStoredIntent);
+
+  useEffect(() => {
+    const handleIntentUpdate = (e: CustomEvent<UserIntent>) => {
+      setIntent(e.detail || getStoredIntent());
+    };
+    window.addEventListener('intent_updated' as any, handleIntentUpdate);
+    return () => window.removeEventListener('intent_updated' as any, handleIntentUpdate);
+  }, []);
+
+  const ctaLabel = getPersonalizedCtaLabel(intent);
+  const isDeveloperRole = intent?.role === 'Developer' || intent?.canonicalRole === 'developer';
+
+  const handleStartProjectClick = () => {
+    trackEvent({
+      event: 'cta_start_project_click',
+      role: intent?.canonicalRole || null,
+      goal: intent?.canonicalGoal || null,
+    });
+    onStartProject();
+  };
+
+  const handleViewWorkClick = () => {
+    trackEvent({
+      event: 'cta_view_work_click',
+      role: intent?.canonicalRole || null,
+      goal: intent?.canonicalGoal || null,
+    });
+    onViewWork();
+  };
 
   const handleSubmitFeedback = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,11 +85,11 @@ export const Hero: React.FC<HeroProps> = ({ onStartProject, onViewWork }) => {
   };
 
   return (
-    <section className="relative min-h-[92vh] flex flex-col justify-between pt-36 sm:pt-42 pb-14 px-6 sm:px-10 max-w-7xl mx-auto">
+    <section className="relative min-h-[85vh] flex flex-col justify-between pt-24 sm:pt-36 pb-10 px-4 sm:px-8 max-w-7xl mx-auto">
       {/* Top Content */}
-      <div className="space-y-8 sm:space-y-10">
+      <div className="space-y-4 sm:space-y-8">
         {/* Availability Badge & Live Visitor Interactive Pill */}
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
@@ -77,18 +110,14 @@ export const Hero: React.FC<HeroProps> = ({ onStartProject, onViewWork }) => {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, delay: 0.25, ease: [0.16, 1, 0.3, 1] }}
             onClick={() => setIsFeedbackOpen((prev) => !prev)}
-            className={`group inline-flex items-center space-x-2 px-4 py-2 rounded-full text-xs font-semibold transition-all duration-300 shadow-md hover:scale-105 ${
+            className={`group inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all duration-300 shadow-xs hover:scale-105 ${
               isFeedbackOpen
-                ? 'bg-[#FF5500] text-white border border-[#FF5500]'
-                : 'bg-[#141413] hover:bg-[#FF5500] text-white border border-white/15 hover:border-[#FF5500]'
+                ? 'bg-accent text-white border border-accent'
+                : 'bg-ink hover:bg-accent text-white border border-white/15'
             }`}
           >
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#FF5500] opacity-80"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-[#FF5500] group-hover:bg-white transition-colors"></span>
-            </span>
-            <MessageSquare className="w-3.5 h-3.5 text-[#FF5500] group-hover:text-white transition-colors" />
-            <span>{isFeedbackOpen ? 'Close Feedback' : 'Leave Feedback'}</span>
+            <MessageSquare className="w-3.5 h-3.5 text-accent group-hover:text-white transition-colors" />
+            <span>{isFeedbackOpen ? 'Close Feedback' : 'Feedback'}</span>
           </motion.button>
         </div>
 
@@ -106,41 +135,52 @@ export const Hero: React.FC<HeroProps> = ({ onStartProject, onViewWork }) => {
         </div>
 
         {/* Narrative & Action Cluster */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 pt-2 items-end">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-8 pt-1 items-end">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.45, ease: [0.16, 1, 0.3, 1] }}
-            className="lg:col-span-7 xl:col-span-6 space-y-4"
+            className="lg:col-span-7 xl:col-span-6 space-y-3"
           >
-            <p className="text-lg sm:text-xl text-ink-secondary leading-relaxed font-normal">
-              Freelance Full Stack Developer bridging the gap between <strong className="font-semibold text-ink">product vision, PRD specifications, and resilient technical architecture</strong>. Whether building a new web application from zero-to-one or revamping &amp; modernizing an existing codebase, I deliver high-performance, production-ready software.
+            <p className="text-sm sm:text-lg text-ink-secondary leading-relaxed font-normal">
+              Freelance Full Stack Developer bridging the gap between <strong className="font-semibold text-ink">product vision, PRD specifications, and resilient technical architecture</strong>. Whether building a new web app from zero-to-one or revamping an existing codebase, I deliver production-ready software.
             </p>
+
+            {/* Developer collaboration note */}
+            {isDeveloperRole && (
+              <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-blue-50 border border-blue-200 text-blue-800 text-xs font-sans font-medium animate-in fade-in">
+                <Code2 className="w-3.5 h-3.5 text-blue-600" />
+                <span>Looking to collaborate? Reach out below</span>
+              </div>
+            )}
           </motion.div>
 
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.6, ease: [0.16, 1, 0.3, 1] }}
-            className="lg:col-span-5 xl:col-span-6 flex flex-wrap gap-4 lg:justify-end items-center"
+            className="lg:col-span-5 xl:col-span-6 flex flex-wrap gap-2.5 sm:gap-4 lg:justify-end items-center"
           >
             <button
-              onClick={onStartProject}
-              className="group inline-flex items-center space-x-3 px-7 py-4 rounded-full bg-ink text-[#FAF9F5] text-sm font-semibold tracking-wide hover:bg-accent transition-all duration-300 shadow-md hover:scale-[1.02]"
+              onClick={handleStartProjectClick}
+              className="group inline-flex items-center space-x-2 px-5 sm:px-7 py-3 sm:py-3.5 rounded-full bg-ink text-[#FAF9F5] text-xs sm:text-sm font-semibold tracking-wide hover:bg-accent transition-all duration-300 shadow-md hover:scale-[1.02] cursor-pointer"
             >
-              <span>Start a Project</span>
+              <span>{ctaLabel}</span>
               <ArrowUpRight className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
             </button>
 
             <button
-              onClick={onViewWork}
-              className="group inline-flex items-center space-x-2 px-6 py-4 rounded-full bg-white hover:bg-black/[0.04] border border-black/10 text-ink text-sm font-medium transition-all duration-300 hover:scale-[1.02]"
+              onClick={handleViewWorkClick}
+              className="group inline-flex items-center space-x-2 px-4.5 sm:px-6 py-3 sm:py-3.5 rounded-full bg-white hover:bg-black/[0.04] border border-black/10 text-ink text-xs sm:text-sm font-medium transition-all duration-300 hover:scale-[1.02] cursor-pointer"
             >
               <span>View Selected Work</span>
               <ArrowDown className="w-4 h-4 transition-transform duration-300 group-hover:translate-y-0.5" />
             </button>
           </motion.div>
         </div>
+
+        {/* Compact Intent Card directly under Hero Buttons */}
+        <IntentModalOrCard />
 
         {/* Interactive Real-Time Visitor Feedback Section Widget */}
         <AnimatePresence>

@@ -1,12 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Copy, Check, Clock, Send, Sparkles, Calendar, ShieldCheck, ArrowRight, Layers, DollarSign, MessageSquare, Building2, Mail, User } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { LottiePlayer } from './LottiePlayer';
 import { SUCCESS_CELEBRATION_LOTTIE } from '../data/localLottieData';
 import { saveLeadSubmission } from '../utils/analytics';
+import { getStoredIntent, getPreFilledContactMessage, getPersonalizedCtaLabel, type UserIntent } from '../utils/intent';
+import { getStoredRef, trackEvent } from '../utils/sourceTracking';
 
-export const Contact: React.FC = () => {
+interface ContactProps {
+  initialMessage?: string;
+}
+
+export const Contact: React.FC<ContactProps> = ({ initialMessage }) => {
   const [copied, setCopied] = useState(false);
   const [formSubmitted, setFormSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -14,14 +20,53 @@ export const Contact: React.FC = () => {
   const [selectedTimeline, setSelectedTimeline] = useState('Within 1 Month');
   const [customBudget, setCustomBudget] = useState('');
   const [customTimeline, setCustomTimeline] = useState('');
+  const [intent, setIntent] = useState<UserIntent | null>(getStoredIntent);
 
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    company: '',
-    budget: '$3,000 – $8,000',
-    message: '',
+  const [formData, setFormData] = useState(() => {
+    const currentIntent = getStoredIntent();
+    return {
+      name: '',
+      email: '',
+      company: '',
+      budget: '$3,000 – $8,000',
+      message: initialMessage || (currentIntent ? getPreFilledContactMessage(currentIntent) : ''),
+    };
   });
+
+  useEffect(() => {
+    if (initialMessage) {
+      setFormData((prev) => ({ ...prev, message: initialMessage }));
+    }
+  }, [initialMessage]);
+
+  useEffect(() => {
+    const handleIntentUpdate = (e: CustomEvent<UserIntent>) => {
+      const newIntent = e.detail || getStoredIntent();
+      setIntent(newIntent);
+      setFormData((prev) => {
+        if (!prev.message.trim() || prev.message.startsWith("I'm a") || prev.message.startsWith("Hey Nedun")) {
+          return { ...prev, message: getPreFilledContactMessage(newIntent) };
+        }
+        return prev;
+      });
+    };
+
+    const handlePreFill = (e: CustomEvent<{ message: string }>) => {
+      if (e.detail?.message) {
+        setFormData((prev) => ({ ...prev, message: e.detail.message }));
+      }
+    };
+
+    window.addEventListener('intent_updated' as any, handleIntentUpdate);
+    window.addEventListener('prefill_contact' as any, handlePreFill);
+    return () => {
+      window.removeEventListener('intent_updated' as any, handleIntentUpdate);
+      window.removeEventListener('prefill_contact' as any, handlePreFill);
+    };
+  }, []);
+
+  const ctaButtonLabel = getPersonalizedCtaLabel(intent);
+  const isDeveloper = intent?.role === 'Developer' || intent?.canonicalRole === 'developer';
 
   const email = 'nedunchezhiyanmaaran@gmail.com';
 
@@ -74,6 +119,9 @@ export const Contact: React.FC = () => {
         ? `${formData.message.trim()}\n\n[Organization / Company: ${formData.company.trim()}]`
         : formData.message.trim();
 
+      const currentIntent = getStoredIntent();
+      const ref = getStoredRef();
+
       // Persist to local cache and Supabase CRM store with resilience
       saveLeadSubmission({
         name: formData.name.trim(),
@@ -82,6 +130,16 @@ export const Contact: React.FC = () => {
         budget: finalBudget,
         timeline: finalTimeline,
         message: fullMessage,
+        role: currentIntent?.canonicalRole || (currentIntent?.role ? currentIntent.role.toLowerCase() : null),
+        goal: currentIntent?.canonicalGoal || (currentIntent?.goal ? currentIntent.goal.toLowerCase() : null),
+        ref: ref || null,
+      });
+
+      // Track event
+      trackEvent({
+        event: 'contact_form_submit',
+        role: currentIntent?.canonicalRole || null,
+        goal: currentIntent?.canonicalGoal || null,
       });
 
       // Show immediate pleasant celebration
@@ -95,7 +153,6 @@ export const Contact: React.FC = () => {
         });
       } catch {}
     } catch (err) {
-      // Graceful fallback — never expose technical errors to founders
       console.warn('Inquiry submission fallback:', err);
       setFormSubmitted(true);
     } finally {
@@ -135,7 +192,7 @@ export const Contact: React.FC = () => {
             <div className="space-y-4">
               <h2 className="text-section-title font-bold tracking-tight text-ink font-display leading-[0.96]">
                 Have something <br />
-                <span className="font-serif italic font-normal text-accent">worth building?</span>
+                <span className="font-display font-bold text-accent">worth building?</span>
               </h2>
               <p className="text-base sm:text-lg text-ink-secondary leading-relaxed font-normal">
                 Tell me what you&apos;re looking to build. Whether you are launching a new SaaS MVP, modernizing an existing web platform, or scoping a custom full-stack system, let&apos;s discuss timeline and architecture.
@@ -318,10 +375,17 @@ export const Contact: React.FC = () => {
               ) : (
                 <form onSubmit={handleSubmit} className="space-y-6">
                   {/* Step Header */}
-                  <div className="border-b border-black/[0.06] pb-4">
-                    <h3 className="font-display text-lg font-bold text-ink flex items-center space-x-2">
-                      <span>Project Brief &amp; Scoping Details</span>
-                    </h3>
+                  <div className="border-b border-black/[0.06] pb-4 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-display text-lg font-bold text-ink flex items-center space-x-2">
+                        <span>Project Brief &amp; Scoping Details</span>
+                      </h3>
+                      {isDeveloper && (
+                        <span className="px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-800 text-xs font-sans font-medium">
+                          Looking to collaborate? Reach out below
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-ink-secondary mt-0.5">
                       Fill out your core requirements to receive a direct scoping and timeline estimate.
                     </p>
@@ -551,7 +615,7 @@ export const Contact: React.FC = () => {
                     disabled={isSubmitting}
                     className="w-full py-4 rounded-2xl bg-ink text-[#FAF9F5] text-sm font-bold tracking-wide flex items-center justify-center space-x-2.5 hover:bg-accent hover:shadow-lg hover:shadow-accent/20 transition-all duration-300 shadow-md disabled:opacity-50 cursor-pointer group"
                   >
-                    <span>Submit Project Inquiry</span>
+                    <span>{ctaButtonLabel || 'Submit Project Inquiry'}</span>
                     <Send className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1" />
                   </motion.button>
                 </form>

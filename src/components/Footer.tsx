@@ -88,6 +88,7 @@ export const Footer: React.FC<FooterProps> = ({ onOpenAdmin }) => {
               <li><a href="#services" className="hover:text-white transition-colors">02. Services &amp; Capabilities</a></li>
               <li><a href="#about" className="hover:text-white transition-colors">03. About &amp; Architecture</a></li>
               <li><a href="#process" className="hover:text-white transition-colors">04. Methodology</a></li>
+              <li><a href="/checklist" className="hover:text-accent transition-colors flex items-center space-x-1.5 font-medium text-accent"><span>⚡ Free MVP Scoping Checklist</span></a></li>
               <li><a href="#contact" className="hover:text-white transition-colors">05. Contact</a></li>
             </ul>
           </div>

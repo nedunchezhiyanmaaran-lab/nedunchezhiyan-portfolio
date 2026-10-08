@@ -18,9 +18,10 @@ export const Navbar: React.FC<NavbarProps> = ({ onContactClick }) => {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  const navLinks = [
+  const navLinks: { label: string; href: string; badge?: string }[] = [
     { label: 'Work', href: '#work' },
     { label: 'Services', href: '#services' },
+    { label: 'MVP Checklist', href: '#checklist', badge: 'FREE' },
     { label: 'About', href: '#about' },
     { label: 'Process', href: '#process' },
     { label: 'Contact', href: '#contact' },
@@ -43,20 +44,25 @@ export const Navbar: React.FC<NavbarProps> = ({ onContactClick }) => {
             <span className="font-display font-bold text-lg sm:text-xl tracking-tight text-ink group-hover:text-accent transition-colors">
               NEDUNCHEZHIYAN
             </span>
-            <span className="hidden md:inline-block font-serif italic text-sm text-ink-secondary ml-1">
+            <span className="hidden md:inline-block font-mono text-xs text-ink-muted ml-2 tracking-wide uppercase">
               / full stack developer
             </span>
           </a>
 
           {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center space-x-9 text-sm font-medium text-ink-secondary">
+          <nav className="hidden md:flex items-center space-x-7 text-sm font-medium text-ink-secondary">
             {navLinks.map((link) => (
               <a
                 key={link.label}
                 href={link.href}
-                className="link-editorial hover:text-ink transition-colors py-1"
+                className="link-editorial hover:text-ink transition-colors py-1 flex items-center space-x-1.5"
               >
-                {link.label}
+                <span>{link.label}</span>
+                {link.badge && (
+                  <span className="px-1.5 py-0.5 rounded-md bg-accent/15 border border-accent/30 text-accent font-mono text-[9px] font-bold tracking-wider">
+                    {link.badge}
+                  </span>
+                )}
               </a>
             ))}
           </nav>

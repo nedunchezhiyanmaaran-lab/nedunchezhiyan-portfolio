@@ -10,19 +10,29 @@ import { Process } from './components/Process';
 import { Contact } from './components/Contact';
 import { Footer } from './components/Footer';
 import { FeedbackWidget } from './components/FeedbackWidget';
+import { PlaybookSection } from './components/PlaybookSection';
 import { AdminDashboard } from './components/admin/AdminDashboard';
 import { initVisitorTracking, trackSectionView } from './utils/analytics';
+import { initRefTracking, trackEvent } from './utils/sourceTracking';
 
 export const App: React.FC = () => {
   const [isAdminOpen, setIsAdminOpen] = useState<boolean>(() => {
     return window.location.hash === '#admin';
   });
 
+  const [contactInitialMessage, setContactInitialMessage] = useState<string>('');
+
   useEffect(() => {
-    // Initialize session and heartbeat tracking
+    // 1. Initialize source ref tracking (?ref=)
+    initRefTracking();
+
+    // 2. Track page_view event (once per session)
+    trackEvent({ event: 'page_view' });
+
+    // 3. Initialize session and heartbeat tracking
     const cleanup = initVisitorTracking();
 
-    const handleHashChange = () => {
+    const handleLocationChange = () => {
       setIsAdminOpen(window.location.hash === '#admin');
     };
 
@@ -34,11 +44,12 @@ export const App: React.FC = () => {
       }
     };
 
-    window.addEventListener('hashchange', handleHashChange);
+    window.addEventListener('hashchange', handleLocationChange);
+    window.addEventListener('popstate', handleLocationChange);
     window.addEventListener('keydown', handleKeyDown);
 
     // Section scroll observer for analytics
-    const sectionIds = ['work', 'services', 'about', 'process', 'contact'];
+    const sectionIds = ['work', 'checklist', 'services', 'about', 'process', 'contact'];
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
@@ -58,7 +69,8 @@ export const App: React.FC = () => {
     return () => {
       cleanup();
       observer.disconnect();
-      window.removeEventListener('hashchange', handleHashChange);
+      window.removeEventListener('hashchange', handleLocationChange);
+      window.removeEventListener('popstate', handleLocationChange);
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
@@ -75,6 +87,12 @@ export const App: React.FC = () => {
     if (workElem) {
       workElem.scrollIntoView({ behavior: 'smooth' });
     }
+  };
+
+  const handleNavigateToContactWithAnswers = (starterText: string) => {
+    setContactInitialMessage(starterText);
+    window.dispatchEvent(new CustomEvent('prefill_contact', { detail: { message: starterText } }));
+    scrollToContact();
   };
 
   const handleCloseAdmin = () => {
@@ -100,10 +118,11 @@ export const App: React.FC = () => {
         <Hero onStartProject={scrollToContact} onViewWork={scrollToWork} />
         <TechTicker />
         <SelectedWork />
+        <PlaybookSection onNavigateToContactWithAnswers={handleNavigateToContactWithAnswers} />
         <Services />
         <About />
         <Process />
-        <Contact />
+        <Contact initialMessage={contactInitialMessage} />
       </main>
 
       {/* Editorial Footer with Admin Link */}

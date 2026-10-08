@@ -9,6 +9,9 @@ CREATE TABLE IF NOT EXISTS contact_leads (
   budget TEXT NOT NULL,
   timeline TEXT DEFAULT '2-4 Weeks',
   message TEXT NOT NULL,
+  role TEXT,
+  goal TEXT,
+  ref TEXT,
   status TEXT DEFAULT 'new' CHECK (status IN ('new', 'contacted', 'archived')),
   notes TEXT DEFAULT '',
   created_at TIMESTAMPTZ DEFAULT now()
@@ -40,10 +43,35 @@ CREATE TABLE IF NOT EXISTS analytics_events (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 4. Enable Row Level Security (RLS) with Public Anonymous Insert & Read Policies
+-- 4. Table: checklist_leads (Free MVP Scoping Checklist Lead Capture)
+CREATE TABLE IF NOT EXISTS checklist_leads (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  email TEXT NOT NULL,
+  idea TEXT NOT NULL,
+  ref TEXT,
+  status TEXT DEFAULT 'new' CHECK (status IN ('new', 'contacted', 'closed')),
+  note TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 5. Table: site_events (Public source tracking & CTA conversion telemetry)
+CREATE TABLE IF NOT EXISTS site_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  event TEXT NOT NULL,
+  ref TEXT,
+  path TEXT DEFAULT '/',
+  role TEXT,
+  goal TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 6. Enable Row Level Security (RLS) with Public Anonymous Insert & Read Policies
 ALTER TABLE contact_leads ENABLE ROW LEVEL SECURITY;
 ALTER TABLE visitor_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE analytics_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE checklist_leads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE site_events ENABLE ROW LEVEL SECURITY;
 
 -- Allow anonymous visitors to insert inquiries & telemetry
 CREATE POLICY "Allow public insert to contact_leads" ON contact_leads FOR INSERT WITH CHECK (true);
@@ -57,3 +85,12 @@ CREATE POLICY "Allow public read to visitor_sessions" ON visitor_sessions FOR SE
 
 CREATE POLICY "Allow public insert to analytics_events" ON analytics_events FOR INSERT WITH CHECK (true);
 CREATE POLICY "Allow public read to analytics_events" ON analytics_events FOR SELECT USING (true);
+
+CREATE POLICY "Allow public insert to checklist_leads" ON checklist_leads FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public read to checklist_leads" ON checklist_leads FOR SELECT USING (true);
+CREATE POLICY "Allow public update to checklist_leads" ON checklist_leads FOR UPDATE USING (true);
+CREATE POLICY "Allow public delete to checklist_leads" ON checklist_leads FOR DELETE USING (true);
+
+CREATE POLICY "Allow public insert to site_events" ON site_events FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public read to site_events" ON site_events FOR SELECT USING (true);
+CREATE POLICY "Allow public delete to site_events" ON site_events FOR DELETE USING (true);

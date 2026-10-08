@@ -20,8 +20,21 @@ export interface SupabaseLead {
   budget: string;
   timeline?: string;
   message: string;
+  role?: string | null;
+  goal?: string | null;
+  ref?: string | null;
   status: 'new' | 'contacted' | 'archived';
   notes?: string;
+  created_at?: string;
+}
+
+export interface SupabaseSiteEvent {
+  id: string;
+  event: string;
+  ref?: string | null;
+  path?: string;
+  role?: string | null;
+  goal?: string | null;
   created_at?: string;
 }
 
@@ -62,6 +75,17 @@ export interface SupabaseFeedback {
   created_at: string;
 }
 
+export interface SupabaseChecklistLead {
+  id: string;
+  name: string;
+  email: string;
+  idea: string;
+  ref?: string | null;
+  status: 'new' | 'contacted' | 'closed';
+  note?: string | null;
+  created_at?: string;
+}
+
 // Database Operations with Resilience & Error Handling
 export const db = {
   // Leads
@@ -92,6 +116,9 @@ export const db = {
             budget: lead.budget,
             timeline: lead.timeline || '2-4 Weeks',
             message: lead.message,
+            role: lead.role || null,
+            goal: lead.goal || null,
+            ref: lead.ref || null,
             status: lead.status || 'new',
             notes: lead.notes || '',
           },
@@ -344,6 +371,208 @@ export const db = {
     } catch (err) {
       console.warn('Supabase getEvents fallback:', err);
       return [];
+    }
+  },
+
+  // Checklist Leads Operations
+  async getChecklistLeads(): Promise<SupabaseChecklistLead[]> {
+    try {
+      const { data, error } = await supabase
+        .from('checklist_leads')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (!error && data) {
+        return data as SupabaseChecklistLead[];
+      }
+
+      // Resilient fallback to contact_leads if table is pending migration
+      const { data: fallbackData } = await supabase
+        .from('contact_leads')
+        .select('*')
+        .eq('project_type', 'Checklist Lead')
+        .order('created_at', { ascending: false });
+
+      return (fallbackData || []).map((row: any) => {
+        let note = row.notes || '';
+        if (note.startsWith('checklist_note:')) {
+          note = note.replace('checklist_note:', '');
+        }
+        return {
+          id: row.id,
+          name: row.name,
+          email: row.email,
+          idea: row.message,
+          ref: row.timeline !== 'Direct' ? row.timeline : null,
+          status: (row.status === 'archived' ? 'closed' : row.status) as 'new' | 'contacted' | 'closed',
+          note: note || null,
+          created_at: row.created_at || new Date().toISOString(),
+        };
+      });
+    } catch (err) {
+      console.warn('Supabase getChecklistLeads fallback:', err);
+      return [];
+    }
+  },
+
+  async createChecklistLead(lead: {
+    name: string;
+    email: string;
+    idea: string;
+    ref?: string | null;
+    status?: 'new' | 'contacted' | 'closed';
+    note?: string | null;
+  }): Promise<SupabaseChecklistLead | null> {
+    try {
+      const { data, error } = await supabase
+        .from('checklist_leads')
+        .insert([
+          {
+            name: lead.name,
+            email: lead.email,
+            idea: lead.idea,
+            ref: lead.ref || null,
+            status: lead.status || 'new',
+            note: lead.note || null,
+          },
+        ])
+        .select()
+        .single();
+
+      if (!error && data) {
+        return data as SupabaseChecklistLead;
+      }
+
+      // Resilient fallback to contact_leads if table is pending migration
+      const { data: fallbackData, error: fallbackError } = await supabase
+        .from('contact_leads')
+        .insert([
+          {
+            name: lead.name,
+            email: lead.email,
+            project_type: 'Checklist Lead',
+            budget: 'Checklist',
+            timeline: lead.ref || 'Direct',
+            message: lead.idea,
+            status: lead.status || 'new',
+            notes: lead.note ? `checklist_note:${lead.note}` : '',
+          },
+        ])
+        .select()
+        .single();
+
+      if (fallbackError) throw fallbackError;
+      if (fallbackData) {
+        return {
+          id: fallbackData.id,
+          name: fallbackData.name,
+          email: fallbackData.email,
+          idea: fallbackData.message,
+          ref: fallbackData.timeline || null,
+          status: (fallbackData.status === 'archived' ? 'closed' : fallbackData.status) as any,
+          note: lead.note || null,
+          created_at: fallbackData.created_at || new Date().toISOString(),
+        };
+      }
+      return null;
+    } catch (err) {
+      console.warn('Supabase createChecklistLead fallback:', err);
+      return null;
+    }
+  },
+
+  async updateChecklistLead(id: string, status: 'new' | 'contacted' | 'closed', note?: string | null): Promise<boolean> {
+    try {
+      const updates: any = { status };
+      if (note !== undefined) updates.note = note;
+
+      const { error } = await supabase.from('checklist_leads').update(updates).eq('id', id);
+      if (!error) return true;
+
+      // Fallback update to contact_leads
+      const fallbackUpdates: any = { status };
+      if (note !== undefined) fallbackUpdates.notes = `checklist_note:${note}`;
+      const { error: fErr } = await supabase.from('contact_leads').update(fallbackUpdates).eq('id', id);
+      if (fErr) throw fErr;
+      return true;
+    } catch (err) {
+      console.warn('Supabase updateChecklistLead fallback:', err);
+      return false;
+    }
+  },
+
+  async deleteChecklistLead(id: string): Promise<boolean> {
+    try {
+      const { error } = await supabase.from('checklist_leads').delete().eq('id', id);
+      if (!error) return true;
+      const { error: fErr } = await supabase.from('contact_leads').delete().eq('id', id);
+      if (fErr) throw fErr;
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  // Site Events & Traffic Intelligence
+  async logSiteEvent(
+    event: string,
+    ref?: string | null,
+    path: string = '/',
+    role?: string | null,
+    goal?: string | null
+  ): Promise<boolean> {
+    try {
+      const { error } = await supabase.from('site_events').insert([
+        {
+          event,
+          ref: ref || null,
+          path: path || '/',
+          role: role || null,
+          goal: goal || null,
+        },
+      ]);
+      if (error) throw error;
+      return true;
+    } catch (err) {
+      console.warn('Supabase logSiteEvent fallback:', err);
+      return false;
+    }
+  },
+
+  async getSiteEvents(limit: number = 500): Promise<SupabaseSiteEvent[]> {
+    try {
+      const { data, error } = await supabase
+        .from('site_events')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(limit);
+      if (error) throw error;
+      return data || [];
+    } catch (err) {
+      console.warn('Supabase getSiteEvents fallback:', err);
+      return [];
+    }
+  },
+
+  async deleteSiteEvent(id: string): Promise<boolean> {
+    try {
+      const { error } = await supabase.from('site_events').delete().eq('id', id);
+      if (error) throw error;
+      return true;
+    } catch (err) {
+      console.warn('Supabase deleteSiteEvent fallback:', err);
+      return false;
+    }
+  },
+
+  async clearSiteEvents(): Promise<boolean> {
+    try {
+      const { error } = await supabase.from('site_events').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      if (error) throw error;
+      return true;
+    } catch (err) {
+      console.warn('Supabase clearSiteEvents fallback:', err);
+      return false;
     }
   },
 };

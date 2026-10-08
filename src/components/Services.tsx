@@ -62,7 +62,7 @@ export const Services: React.FC = () => {
           <div className="max-w-4xl space-y-5">
             <h2 className="text-section-title font-bold tracking-tight text-ink font-display leading-[0.98]">
               Direct Technical Execution.{' '}
-              <span className="text-accent font-serif italic font-normal block sm:inline">
+              <span className="text-accent font-display font-bold block sm:inline">
                 Product-minded engineering.
               </span>
             </h2>

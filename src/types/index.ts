@@ -45,3 +45,15 @@ export interface ProcessStep {
   description: string;
   outputs: string[];
 }
+
+export interface ChecklistLead {
+  id: string;
+  name: string;
+  email: string;
+  idea: string;
+  ref?: string | null;
+  status: 'new' | 'contacted' | 'closed';
+  note?: string | null;
+  created_at?: string;
+}
+

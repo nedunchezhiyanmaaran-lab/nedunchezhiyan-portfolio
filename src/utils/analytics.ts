@@ -1,4 +1,6 @@
-import { db, type SupabaseLead, type SupabaseSession, type SupabaseEvent } from '../lib/supabase';
+import { db, type SupabaseLead, type SupabaseSession, type SupabaseEvent, type SupabaseSiteEvent } from '../lib/supabase';
+import type { ChecklistLead } from '../types';
+export type { ChecklistLead, SupabaseSiteEvent };
 
 export interface VisitorSession {
   id: string;
@@ -32,6 +34,9 @@ export interface LeadSubmission {
   budget: string;
   timeline: string;
   message: string;
+  role?: string | null;
+  goal?: string | null;
+  ref?: string | null;
   status: 'new' | 'contacted' | 'archived';
   notes?: string;
 }
@@ -88,15 +93,19 @@ export interface AnalyticsSummary {
   }[];
   leads: LeadSubmission[];
   feedbacks: VisitorFeedback[];
+  checklistLeads: ChecklistLead[];
   sessions: VisitorSession[];
+  siteEvents: SupabaseSiteEvent[];
 }
 
 const STORAGE_KEYS = {
   SESSIONS: 'nedun_live_sessions_v2',
   LEADS: 'nedun_live_leads_v2',
   FEEDBACKS: 'nedun_live_feedbacks_v2',
+  CHECKLIST_LEADS: 'nedun_live_checklist_leads_v2',
   CURRENT_SESSION: 'nedun_current_session_id_v2',
   EVENTS: 'nedun_live_events_v2',
+  SITE_EVENTS: 'nedun_live_site_events_v2',
 };
 
 // Clean up any legacy seed keys from v1
@@ -462,6 +471,9 @@ export const saveLeadSubmission = (
       budget: newLead.budget,
       timeline: newLead.timeline,
       message: newLead.message,
+      role: newLead.role || null,
+      goal: newLead.goal || null,
+      ref: newLead.ref || null,
       status: 'new',
     }).then((remote) => {
       if (remote?.id) {
@@ -574,6 +586,112 @@ export const deleteVisitorFeedback = async (id: string) => {
   }
 };
 
+export const saveChecklistLead = async (lead: {
+  name: string;
+  email?: string;
+  idea: string;
+  ref?: string | null;
+  note?: string | null;
+}): Promise<ChecklistLead> => {
+  const env = detectEnvironment();
+  const visitorId = localStorage.getItem('nedun_persistent_visitor_id') || `vis_${Date.now()}`;
+  const deviceSig = `${env.device} · ${env.os} (${env.browser}) · dev:${visitorId}`;
+
+  const newLead: ChecklistLead = {
+    id: `chk_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+    name: lead.name?.trim() || 'Anonymous Founder',
+    email: lead.email?.trim().toLowerCase() || 'visitor@download.pdf',
+    idea: lead.idea?.trim() || 'MVP Scoping PDF Download',
+    ref: lead.ref?.trim() || env.referrer || null,
+    status: 'new',
+    note: lead.note || deviceSig,
+    created_at: new Date().toISOString(),
+  };
+
+  try {
+    const list: ChecklistLead[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.CHECKLIST_LEADS) || '[]');
+    list.unshift(newLead);
+    localStorage.setItem(STORAGE_KEYS.CHECKLIST_LEADS, JSON.stringify(list));
+
+    const remote = await db.createChecklistLead({
+      name: newLead.name,
+      email: newLead.email,
+      idea: newLead.idea,
+      ref: newLead.ref,
+      status: 'new',
+      note: newLead.note,
+    });
+
+    if (remote?.id) {
+      const currentList: ChecklistLead[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.CHECKLIST_LEADS) || '[]');
+      const idx = currentList.findIndex((c) => c.id === newLead.id);
+      if (idx !== -1) {
+        currentList[idx].id = remote.id;
+        localStorage.setItem(STORAGE_KEYS.CHECKLIST_LEADS, JSON.stringify(currentList));
+      }
+    }
+
+    logAnalyticsEvent('section_read', `📥 Scoping PDF Downloaded by ${newLead.name}: "${newLead.idea.substring(0, 35)}..."`, `${env.device} · ${env.os}`);
+  } catch (err) {
+    console.warn('saveChecklistLead fallback:', err);
+  }
+
+  return newLead;
+};
+
+export const updateChecklistLeadStatus = async (
+  id: string,
+  status: 'new' | 'contacted' | 'closed',
+  note?: string | null
+) => {
+  try {
+    const list: ChecklistLead[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.CHECKLIST_LEADS) || '[]');
+    const idx = list.findIndex((c) => c.id === id);
+    if (idx !== -1) {
+      list[idx].status = status;
+      if (note !== undefined) list[idx].note = note;
+      localStorage.setItem(STORAGE_KEYS.CHECKLIST_LEADS, JSON.stringify(list));
+    }
+
+    await db.updateChecklistLead(id, status, note);
+  } catch (e) {
+    console.error(e);
+  }
+};
+
+export const deleteChecklistLead = async (id: string) => {
+  try {
+    const list: ChecklistLead[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.CHECKLIST_LEADS) || '[]');
+    const filtered = list.filter((c) => c.id !== id);
+    localStorage.setItem(STORAGE_KEYS.CHECKLIST_LEADS, JSON.stringify(filtered));
+
+    await db.deleteChecklistLead(id);
+  } catch (e) {
+    console.error(e);
+  }
+};
+
+export const deleteSiteEvent = async (id: string) => {
+  try {
+    const list = JSON.parse(localStorage.getItem(STORAGE_KEYS.SITE_EVENTS) || '[]');
+    const filtered = list.filter((e: any) => e.id !== id);
+    localStorage.setItem(STORAGE_KEYS.SITE_EVENTS, JSON.stringify(filtered));
+
+    await db.deleteSiteEvent(id);
+  } catch (e) {
+    console.error(e);
+  }
+};
+
+export const clearAllSiteEvents = async () => {
+  try {
+    localStorage.setItem(STORAGE_KEYS.SITE_EVENTS, JSON.stringify([]));
+    await db.clearSiteEvents();
+  } catch (e) {
+    console.error(e);
+  }
+};
+
 export const logAnalyticsEvent = (
   type: AnalyticsSummary['recentEvents'][0]['type'],
   description: string,
@@ -596,16 +714,17 @@ export const logAnalyticsEvent = (
   }
 };
 
-// Sync Supabase Leads, Feedbacks, Sessions, and Events into Local State (Robust 2-way Merge)
-export const syncSupabaseData = async (): Promise<{ leads: LeadSubmission[]; sessions: VisitorSession[]; feedbacks: VisitorFeedback[] }> => {
+export const syncSupabaseData = async (): Promise<{ leads: LeadSubmission[]; sessions: VisitorSession[]; feedbacks: VisitorFeedback[]; checklistLeads: ChecklistLead[]; siteEvents: SupabaseSiteEvent[] }> => {
   const localLeads: LeadSubmission[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.LEADS) || '[]');
 
   try {
-    const [remoteLeadsRes, remoteSessionsRes, remoteEventsRes, remoteFeedbacksRes] = await Promise.allSettled([
+    const [remoteLeadsRes, remoteSessionsRes, remoteEventsRes, remoteFeedbacksRes, remoteChecklistsRes, remoteSiteEventsRes] = await Promise.allSettled([
       db.getLeads(),
       db.getSessions(200),
       db.getEvents(250),
       db.getFeedbacks(),
+      db.getChecklistLeads(),
+      db.getSiteEvents(500),
     ]);
 
     // 1. Process Leads
@@ -625,6 +744,9 @@ export const syncSupabaseData = async (): Promise<{ leads: LeadSubmission[]; ses
           budget: r.budget,
           timeline: r.timeline || '2-4 Weeks',
           message: r.message,
+          role: r.role || null,
+          goal: r.goal || null,
+          ref: r.ref || null,
           status: r.status || 'new',
           notes: r.notes || '',
         });
@@ -640,6 +762,18 @@ export const syncSupabaseData = async (): Promise<{ leads: LeadSubmission[]; ses
     if (remoteFeedbacksRes.status === 'fulfilled' && Array.isArray(remoteFeedbacksRes.value)) {
       const remoteFeedbacks = remoteFeedbacksRes.value;
       localStorage.setItem(STORAGE_KEYS.FEEDBACKS, JSON.stringify(remoteFeedbacks));
+    }
+
+    // 1c. Process Checklist Leads directly from Supabase
+    if (remoteChecklistsRes.status === 'fulfilled' && Array.isArray(remoteChecklistsRes.value)) {
+      const remoteChecklists = remoteChecklistsRes.value;
+      localStorage.setItem(STORAGE_KEYS.CHECKLIST_LEADS, JSON.stringify(remoteChecklists));
+    }
+
+    // 1d. Process Site Events directly from Supabase
+    if (remoteSiteEventsRes.status === 'fulfilled' && Array.isArray(remoteSiteEventsRes.value)) {
+      const remoteSiteEvents = remoteSiteEventsRes.value;
+      localStorage.setItem(STORAGE_KEYS.SITE_EVENTS, JSON.stringify(remoteSiteEvents));
     }
 
     // 2. Process Sessions
@@ -744,6 +878,8 @@ export const syncSupabaseData = async (): Promise<{ leads: LeadSubmission[]; ses
     leads: JSON.parse(localStorage.getItem(STORAGE_KEYS.LEADS) || '[]'),
     sessions: JSON.parse(localStorage.getItem(STORAGE_KEYS.SESSIONS) || '[]'),
     feedbacks: JSON.parse(localStorage.getItem(STORAGE_KEYS.FEEDBACKS) || '[]'),
+    checklistLeads: JSON.parse(localStorage.getItem(STORAGE_KEYS.CHECKLIST_LEADS) || '[]'),
+    siteEvents: JSON.parse(localStorage.getItem(STORAGE_KEYS.SITE_EVENTS) || '[]'),
   };
 };
 
@@ -809,6 +945,8 @@ export const getAnalyticsSummary = (
   const rawSessions: VisitorSession[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.SESSIONS) || '[]');
   const leads: LeadSubmission[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.LEADS) || '[]');
   const feedbacks: VisitorFeedback[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.FEEDBACKS) || '[]');
+  const checklistLeads: ChecklistLead[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.CHECKLIST_LEADS) || '[]');
+  const siteEvents: SupabaseSiteEvent[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.SITE_EVENTS) || '[]');
   const rawRecentEvents = JSON.parse(localStorage.getItem(STORAGE_KEYS.EVENTS) || '[]');
 
   // Strictly filter for real external visitors (exclude all owner/laptop sessions)
@@ -1059,7 +1197,9 @@ export const getAnalyticsSummary = (
     recentEvents: recentEvents.slice(0, 250),
     leads,
     feedbacks,
+    checklistLeads,
     sessions: sessions.slice(0, 200),
+    siteEvents: siteEvents || [],
   };
 };
 

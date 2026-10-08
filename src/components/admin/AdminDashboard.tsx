@@ -24,6 +24,9 @@ import {
   ChevronRight,
   Calendar,
   MessageSquare,
+  ClipboardList,
+  Target,
+  CheckCircle2,
   X,
 } from 'lucide-react';
 import {
@@ -31,6 +34,10 @@ import {
   updateLeadStatus,
   deleteLead,
   deleteVisitorFeedback,
+  updateChecklistLeadStatus,
+  deleteChecklistLead,
+  deleteSiteEvent,
+  clearAllSiteEvents,
   exportAnalyticsFile,
   resetAnalyticsData,
   logAnalyticsEvent,
@@ -38,6 +45,7 @@ import {
   type AnalyticsSummary,
   type LeadSubmission,
   type VisitorFeedback,
+  type ChecklistLead,
 } from '../../utils/analytics';
 
 interface AdminDashboardProps {
@@ -50,7 +58,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
   });
   const [pinInput, setPinInput] = useState<string>('');
   const [pinError, setPinError] = useState<string>('');
-  const [activeTab, setActiveTab] = useState<'overview' | 'traffic' | 'projects' | 'leads' | 'tech' | 'stream' | 'feedbacks'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'intent' | 'traffic' | 'projects' | 'leads' | 'tech' | 'stream' | 'feedbacks' | 'checklists'>('overview');
   const [timeframe, setTimeframe] = useState<7 | 14 | 30>(14);
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -62,6 +70,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
   const [activeHoverPoint, setActiveHoverPoint] = useState<number | null>(null);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [isSupabaseSynced, setIsSupabaseSynced] = useState<boolean>(true);
+
+  // Intent Intelligence state
+  const [intentSearch, setIntentSearch] = useState<string>('');
+  const [intentRoleFilter, setIntentRoleFilter] = useState<string>('all');
+  const [intentGoalFilter, setIntentGoalFilter] = useState<string>('all');
+  const [intentRefFilter, setIntentRefFilter] = useState<string>('all');
+  const [intentPage, setIntentPage] = useState<number>(1);
+  const [intentPageSize] = useState<number>(15);
+
+  // Checklist Leads management state
+  const [selectedChecklistLead, setSelectedChecklistLead] = useState<ChecklistLead | null>(null);
+  const [checklistNoteInput, setChecklistNoteInput] = useState<string>('');
+  const [checklistSearch, setChecklistSearch] = useState<string>('');
+  const [checklistStatusFilter, setChecklistStatusFilter] = useState<string>('all');
+  const [checklistRefFilter, setChecklistRefFilter] = useState<string>('all');
 
   // Visitor Feedbacks filter state
   const [feedbackDeviceFilter, setFeedbackDeviceFilter] = useState<string>('all');
@@ -139,6 +162,104 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
     updateLeadStatus(selectedLead.id, selectedLead.status, leadNoteInput);
     setSelectedLead((prev) => (prev ? { ...prev, notes: leadNoteInput } : null));
     refreshData();
+  };
+
+  const handleChecklistStatusChange = async (id: string, newStatus: 'new' | 'contacted' | 'closed') => {
+    await updateChecklistLeadStatus(id, newStatus);
+    refreshData();
+    if (selectedChecklistLead && selectedChecklistLead.id === id) {
+      setSelectedChecklistLead((prev: ChecklistLead | null) => (prev ? { ...prev, status: newStatus } : null));
+    }
+  };
+
+  const handleSaveChecklistNote = async () => {
+    if (!selectedChecklistLead) return;
+    await updateChecklistLeadStatus(selectedChecklistLead.id, selectedChecklistLead.status, checklistNoteInput);
+    setSelectedChecklistLead((prev: ChecklistLead | null) => (prev ? { ...prev, note: checklistNoteInput } : null));
+    refreshData();
+  };
+
+  const handleDeleteChecklist = async (id: string) => {
+    if (window.confirm('Delete this checklist lead record?')) {
+      await deleteChecklistLead(id);
+      if (selectedChecklistLead?.id === id) setSelectedChecklistLead(null);
+      refreshData();
+    }
+  };
+
+  const handleExportChecklistsCSV = () => {
+    const list = summary?.checklistLeads || [];
+    if (list.length === 0) {
+      alert('No checklist leads to export.');
+      return;
+    }
+
+    const headers = ['ID', 'Name', 'Email', 'Project Idea', 'Traffic Ref', 'Status', 'Private Note', 'Created At'];
+    const rows = list.map((l) => [
+      `"${l.id}"`,
+      `"${(l.name || '').replace(/"/g, '""')}"`,
+      `"${(l.email || '').replace(/"/g, '""')}"`,
+      `"${(l.idea || '').replace(/"/g, '""')}"`,
+      `"${(l.ref || 'Direct').replace(/"/g, '""')}"`,
+      `"${l.status}"`,
+      `"${(l.note || '').replace(/"/g, '""')}"`,
+      `"${l.created_at || ''}"`,
+    ]);
+
+    const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `checklist_leads_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportIntentCSV = () => {
+    const list = (summary?.siteEvents || []).filter((e) => e.event === 'intent_answered');
+    if (list.length === 0) {
+      alert('No intent response records to export.');
+      return;
+    }
+
+    const headers = ['ID', 'Event', 'Role', 'Goal', 'Traffic Source (?ref)', 'Path', 'Created At'];
+    const rows = list.map((e) => [
+      `"${e.id}"`,
+      `"${e.event}"`,
+      `"${(e.role || '').replace(/"/g, '""')}"`,
+      `"${(e.goal || '').replace(/"/g, '""')}"`,
+      `"${(e.ref || 'Direct').replace(/"/g, '""')}"`,
+      `"${(e.path || '/').replace(/"/g, '""')}"`,
+      `"${e.created_at || ''}"`,
+    ]);
+
+    const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `visitor_intent_telemetry_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDeleteSiteEvent = async (id: string) => {
+    if (window.confirm('Delete this intent response record?')) {
+      await deleteSiteEvent(id);
+      refreshData();
+    }
+  };
+
+  const handleClearAllIntentRecords = async () => {
+    if (window.confirm('Are you sure you want to delete all visitor intent records from Supabase and local cache?')) {
+      await clearAllSiteEvents();
+      refreshData();
+    }
   };
 
   if (!isAuthenticated) {
@@ -296,9 +417,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
           <nav className="flex md:flex-col space-x-1 md:space-x-0 md:space-y-1.5 shrink-0">
             {[
               { id: 'overview', label: 'Overview & KPIs', icon: TrendingUp },
+              { id: 'intent', label: `🎯 Visitor Intent (${(summary.siteEvents || []).filter((e) => e.event === 'intent_answered').length})`, icon: Target },
               { id: 'traffic', label: 'Traffic & Trends', icon: Activity },
               { id: 'projects', label: 'Project Engagement', icon: Layers },
               { id: 'leads', label: `Lead Inbox (${summary.leads.length})`, icon: Send },
+              { id: 'checklists', label: `📋 Checklist Leads (${summary.checklistLeads?.length || 0})`, icon: ClipboardList },
               { id: 'feedbacks', label: `💬 Visitor Feedbacks (${summary.feedbacks?.length || 0})`, icon: MessageSquare },
               { id: 'tech', label: 'Audience & Stack', icon: Globe },
               { id: 'stream', label: 'Live Event Stream', icon: Sparkles },
@@ -671,9 +794,746 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
             </div>
           )}
 
+          {/* TAB: VISITOR INTENT & DEVICE TELEMETRY */}
+          {activeTab === 'intent' && (() => {
+            const siteEvents = summary.siteEvents || [];
+            const answeredEvents = siteEvents.filter((e) => e.event === 'intent_answered');
+            const skippedEvents = siteEvents.filter((e) => e.event === 'intent_skipped');
+            const totalIntentInteractions = answeredEvents.length + skippedEvents.length;
+            const answerRate = totalIntentInteractions > 0
+              ? ((answeredEvents.length / totalIntentInteractions) * 100).toFixed(1)
+              : '0';
+
+            // Calculate Role Frequencies
+            const roleFreq: Record<string, number> = {};
+            answeredEvents.forEach((e) => {
+              const r = e.role || 'Other';
+              roleFreq[r] = (roleFreq[r] || 0) + 1;
+            });
+            const topRoleEntry = Object.entries(roleFreq).sort((a, b) => b[1] - a[1])[0];
+            const topRole = topRoleEntry
+              ? `${topRoleEntry[0]} (${Math.round((topRoleEntry[1] / (answeredEvents.length || 1)) * 100)}%)`
+              : 'None yet';
+
+            // Calculate Goal Frequencies
+            const goalFreq: Record<string, number> = {};
+            answeredEvents.forEach((e) => {
+              const g = e.goal || 'Just exploring';
+              goalFreq[g] = (goalFreq[g] || 0) + 1;
+            });
+            const topGoalEntry = Object.entries(goalFreq).sort((a, b) => b[1] - a[1])[0];
+            const topGoal = topGoalEntry
+              ? `${topGoalEntry[0]}`
+              : 'None yet';
+
+            // Role by Ref Matrix
+            const allRefs = Array.from(new Set(answeredEvents.map((e) => (e.ref || 'direct / none').toLowerCase())));
+            if (allRefs.length === 0) allRefs.push('direct / none');
+
+            const refRoleCounts: Record<string, Record<string, number>> = {};
+            answeredEvents.forEach((evt) => {
+              const r = (evt.ref || 'direct / none').toLowerCase();
+              const role = evt.role || 'Other';
+              if (!refRoleCounts[r]) refRoleCounts[r] = {};
+              refRoleCounts[r][role] = (refRoleCounts[r][role] || 0) + 1;
+            });
+
+            // Goal by Role Matrix
+            const allRoles = ['Founder', 'Co-founder', 'Developer', 'Agency / Team', 'Other'];
+            const roleGoalCounts: Record<string, Record<string, number>> = {};
+            answeredEvents.forEach((evt) => {
+              const role = evt.role || 'Other';
+              const goal = evt.goal || 'Just exploring';
+              if (!roleGoalCounts[role]) roleGoalCounts[role] = {};
+              roleGoalCounts[role][goal] = (roleGoalCounts[role][goal] || 0) + 1;
+            });
+
+            // Unique Filter lists
+            const distinctRoles = Array.from(new Set(answeredEvents.map((e) => e.role || 'Other'))).filter(Boolean);
+            const distinctGoals = Array.from(new Set(answeredEvents.map((e) => e.goal || 'Just exploring'))).filter(Boolean);
+            const distinctRefs = Array.from(new Set(answeredEvents.map((e) => e.ref || 'direct'))).filter(Boolean);
+
+            // Filtered Granular Events
+            const filteredIntentList = answeredEvents.filter((item) => {
+              const matchesSearch =
+                !intentSearch ||
+                (item.role || '').toLowerCase().includes(intentSearch.toLowerCase()) ||
+                (item.goal || '').toLowerCase().includes(intentSearch.toLowerCase()) ||
+                (item.ref || '').toLowerCase().includes(intentSearch.toLowerCase()) ||
+                (item.path || '').toLowerCase().includes(intentSearch.toLowerCase());
+
+              const matchesRole =
+                intentRoleFilter === 'all' || (item.role || '').toLowerCase() === intentRoleFilter.toLowerCase();
+              const matchesGoal =
+                intentGoalFilter === 'all' || (item.goal || '').toLowerCase() === intentGoalFilter.toLowerCase();
+              const matchesRef =
+                intentRefFilter === 'all' || (item.ref || 'direct').toLowerCase() === intentRefFilter.toLowerCase();
+
+              return matchesSearch && matchesRole && matchesGoal && matchesRef;
+            });
+
+            // Pagination calculations
+            const totalPages = Math.max(1, Math.ceil(filteredIntentList.length / intentPageSize));
+            const paginatedIntentList = filteredIntentList.slice(
+              (intentPage - 1) * intentPageSize,
+              intentPage * intentPageSize
+            );
+
+            return (
+              <div className="space-y-8">
+                {/* Intent Intelligence Header */}
+                <div className="p-6 sm:p-8 rounded-3xl bg-[#181816] border border-accent/25 space-y-6 shadow-xl">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/10 pb-6">
+                    <div className="space-y-1">
+                      <div className="flex items-center space-x-2.5">
+                        <div className="w-8 h-8 rounded-xl bg-accent/20 border border-accent/30 text-accent flex items-center justify-center">
+                          <Target className="w-4 h-4" />
+                        </div>
+                        <h2 className="font-display text-2xl font-bold text-white tracking-tight">
+                          Visitor Intent &amp; Device Telemetry
+                        </h2>
+                      </div>
+                      <p className="text-xs font-sans text-white/60 max-w-2xl">
+                        Comprehensive logging of what founders and technical visitors select when landing on your portfolio. Mapped directly to acquisition campaigns (<code className="text-accent font-mono">?ref=</code>) and client devices in Supabase.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center space-x-3 shrink-0">
+                      <button
+                        onClick={handleClearAllIntentRecords}
+                        className="inline-flex items-center space-x-1.5 px-3.5 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 text-xs font-mono text-red-400 transition-all shadow-xs cursor-pointer"
+                        title="Delete all intent records"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                        <span>Clear All</span>
+                      </button>
+
+                      <button
+                        onClick={handleExportIntentCSV}
+                        className="inline-flex items-center space-x-1.5 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-xs font-mono text-white transition-all shadow-xs cursor-pointer"
+                      >
+                        <Download className="w-3.5 h-3.5 text-accent" />
+                        <span>Export CSV</span>
+                      </button>
+
+                      <button
+                        onClick={refreshData}
+                        className="p-2.5 rounded-xl bg-accent/10 border border-accent/30 text-accent hover:bg-accent/20 transition-all cursor-pointer"
+                        title="Refresh live data"
+                      >
+                        <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 4 KPI Summary Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/10 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-mono uppercase tracking-wider text-white/50">
+                          Total Answers
+                        </span>
+                        <div className="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                        </div>
+                      </div>
+                      <div className="flex items-baseline space-x-2">
+                        <span className="text-3xl font-bold font-mono text-white">
+                          {answeredEvents.length}
+                        </span>
+                        <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                          Live DB
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-white/40">
+                        {totalIntentInteractions} Total prompts presented
+                      </p>
+                    </div>
+
+                    <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/10 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-mono uppercase tracking-wider text-white/50">
+                          Answer Rate
+                        </span>
+                        <div className="w-7 h-7 rounded-lg bg-accent/10 text-accent flex items-center justify-center">
+                          <Target className="w-3.5 h-3.5" />
+                        </div>
+                      </div>
+                      <div className="flex items-baseline space-x-2">
+                        <span className="text-3xl font-bold font-mono text-accent">
+                          {answerRate}%
+                        </span>
+                        <span className="text-[10px] font-mono text-white/50">
+                          vs {skippedEvents.length} skips
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-white/40">
+                        High engagement on 5s question
+                      </p>
+                    </div>
+
+                    <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/10 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-mono uppercase tracking-wider text-white/50">
+                          Primary Visitor Role
+                        </span>
+                        <div className="w-7 h-7 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center">
+                          <Users className="w-3.5 h-3.5" />
+                        </div>
+                      </div>
+                      <div className="text-xl font-bold font-display text-white truncate">
+                        {topRole}
+                      </div>
+                      <p className="text-[11px] text-white/40">
+                        Most active audience segment
+                      </p>
+                    </div>
+
+                    <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/10 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-mono uppercase tracking-wider text-white/50">
+                          Top Project Scope
+                        </span>
+                        <div className="w-7 h-7 rounded-lg bg-purple-500/10 text-purple-400 flex items-center justify-center">
+                          <Layers className="w-3.5 h-3.5" />
+                        </div>
+                      </div>
+                      <div className="text-sm font-bold font-display text-white truncate" title={topGoal}>
+                        {topGoal}
+                      </div>
+                      <p className="text-[11px] text-white/40">
+                        Primary demand requirement
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Filter & Search Bar */}
+                <div className="p-4 sm:p-5 rounded-3xl bg-[#181816] border border-white/10 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+                  <div className="relative flex-1">
+                    <Search className="w-4 h-4 text-white/40 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Search intent records by role, goal, ?ref source, or path..."
+                      value={intentSearch}
+                      onChange={(e) => {
+                        setIntentSearch(e.target.value);
+                        setIntentPage(1);
+                      }}
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-black/40 border border-white/10 text-xs text-white placeholder-white/30 font-mono focus:outline-none focus:border-accent"
+                    />
+                    {intentSearch && (
+                      <button
+                        onClick={() => setIntentSearch('')}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white text-xs"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    <div className="flex items-center space-x-1.5">
+                      <Filter className="w-3.5 h-3.5 text-accent" />
+                      <select
+                        value={intentRoleFilter}
+                        onChange={(e) => {
+                          setIntentRoleFilter(e.target.value);
+                          setIntentPage(1);
+                        }}
+                        className="px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-xs font-mono text-white/80 focus:outline-none focus:border-accent"
+                      >
+                        <option value="all">All Roles ({answeredEvents.length})</option>
+                        {distinctRoles.map((r) => (
+                          <option key={r} value={r}>
+                            {r} ({roleFreq[r] || 0})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <select
+                      value={intentGoalFilter}
+                      onChange={(e) => {
+                        setIntentGoalFilter(e.target.value);
+                        setIntentPage(1);
+                      }}
+                      className="px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-xs font-mono text-white/80 focus:outline-none focus:border-accent max-w-[200px]"
+                    >
+                      <option value="all">All Project Goals</option>
+                      {distinctGoals.map((g) => (
+                        <option key={g} value={g}>
+                          {g}
+                        </option>
+                      ))}
+                    </select>
+
+                    <select
+                      value={intentRefFilter}
+                      onChange={(e) => {
+                        setIntentRefFilter(e.target.value);
+                        setIntentPage(1);
+                      }}
+                      className="px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-xs font-mono text-white/80 focus:outline-none focus:border-accent"
+                    >
+                      <option value="all">All Sources (?ref)</option>
+                      {distinctRefs.map((rf) => (
+                        <option key={rf} value={rf}>
+                          {rf}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Table 1 & Table 2 Cross-Tabulation Breakdown Grid */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Table 1: Visitor Role by Acquisition Ref */}
+                  <div className="p-6 rounded-3xl bg-[#181816] border border-white/10 space-y-4">
+                    <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                      <div className="flex items-center space-x-2">
+                        <Sparkles className="w-4 h-4 text-accent" />
+                        <h3 className="font-display font-bold text-white text-base">
+                          Table 1 &middot; Role by Campaign Source (?ref)
+                        </h3>
+                      </div>
+                      <span className="text-[11px] font-mono text-white/40">
+                        {allRefs.length} Channel{allRefs.length === 1 ? '' : 's'}
+                      </span>
+                    </div>
+
+                    <div className="w-full overflow-x-auto rounded-2xl border border-white/10 bg-black/40">
+                      <table className="w-full text-left text-xs font-mono">
+                        <thead className="bg-white/5 border-b border-white/10 text-white/60">
+                          <tr>
+                            <th className="p-3">Referral Channel</th>
+                            <th className="p-3 text-center">Founder</th>
+                            <th className="p-3 text-center">Co-founder</th>
+                            <th className="p-3 text-center">Developer</th>
+                            <th className="p-3 text-center">Agency</th>
+                            <th className="p-3 text-center">Other</th>
+                            <th className="p-3 text-right">Total</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                          {allRefs.map((r) => {
+                            const counts = refRoleCounts[r] || {};
+                            const f = counts['Founder'] || counts['founder'] || 0;
+                            const cf = counts['Co-founder'] || counts['cofounder'] || 0;
+                            const dev = counts['Developer'] || counts['developer'] || 0;
+                            const ag = counts['Agency / Team'] || counts['agency'] || 0;
+                            const oth = counts['Other'] || counts['other'] || 0;
+                            const total = f + cf + dev + ag + oth;
+
+                            return (
+                              <tr key={r} className="hover:bg-white/[0.02] transition-colors">
+                                <td className="p-3 font-semibold text-accent">
+                                  {r === 'direct / none' ? 'Direct / Organic' : `?ref=${r}`}
+                                </td>
+                                <td className="p-3 text-center text-white/80">{f}</td>
+                                <td className="p-3 text-center text-white/80">{cf}</td>
+                                <td className="p-3 text-center text-white/80">{dev}</td>
+                                <td className="p-3 text-center text-white/80">{ag}</td>
+                                <td className="p-3 text-center text-white/80">{oth}</td>
+                                <td className="p-3 text-right font-bold text-white">{total}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Table 2: Goal by Role */}
+                  <div className="p-6 rounded-3xl bg-[#181816] border border-white/10 space-y-4">
+                    <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                      <div className="flex items-center space-x-2">
+                        <Target className="w-4 h-4 text-accent" />
+                        <h3 className="font-display font-bold text-white text-base">
+                          Table 2 &middot; Project Goal by Visitor Role
+                        </h3>
+                      </div>
+                      <span className="text-[11px] font-mono text-white/40">
+                        Demand Intent Matrix
+                      </span>
+                    </div>
+
+                    <div className="w-full overflow-x-auto rounded-2xl border border-white/10 bg-black/40">
+                      <table className="w-full text-left text-xs font-mono">
+                        <thead className="bg-white/5 border-b border-white/10 text-white/60">
+                          <tr>
+                            <th className="p-3">Visitor Role</th>
+                            <th className="p-3 text-center">New App</th>
+                            <th className="p-3 text-center">Revamp</th>
+                            <th className="p-3 text-center">Features</th>
+                            <th className="p-3 text-center">Manual</th>
+                            <th className="p-3 text-center">Exploring</th>
+                            <th className="p-3 text-right">Total</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                          {allRoles.map((role) => {
+                            const counts = roleGoalCounts[role] || roleGoalCounts[role.toLowerCase()] || {};
+                            const newApp = counts['Build a new app / MVP'] || counts['new_app'] || 0;
+                            const revamp = counts['Revamp or improve an existing app'] || counts['revamp'] || 0;
+                            const feat = counts['Add features or integrations'] || counts['add_features'] || 0;
+                            const man = counts['Turn a manual process into software'] || counts['manual_process'] || 0;
+                            const exp = counts['Just exploring'] || counts['exploring'] || 0;
+                            const total = newApp + revamp + feat + man + exp;
+
+                            return (
+                              <tr key={role} className="hover:bg-white/[0.02] transition-colors">
+                                <td className="p-3 font-semibold text-white">{role}</td>
+                                <td className="p-3 text-center text-white/80">{newApp}</td>
+                                <td className="p-3 text-center text-white/80">{revamp}</td>
+                                <td className="p-3 text-center text-white/80">{feat}</td>
+                                <td className="p-3 text-center text-white/80">{man}</td>
+                                <td className="p-3 text-center text-white/80">{exp}</td>
+                                <td className="p-3 text-right font-bold text-accent">{total}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Granular Intent Logs Ledger */}
+                <div className="p-6 rounded-3xl bg-[#181816] border border-white/10 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-4">
+                    <div className="flex items-center space-x-2.5">
+                      <Target className="w-4 h-4 text-accent" />
+                      <h3 className="font-display font-bold text-white text-lg">
+                        Live Intent Log Ledger
+                      </h3>
+                      <span className="px-2.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-white/60 font-mono text-xs">
+                        {filteredIntentList.length} Entries
+                      </span>
+                    </div>
+
+                    <div className="text-xs font-mono text-white/40">
+                      Page {intentPage} of {totalPages}
+                    </div>
+                  </div>
+
+                  {filteredIntentList.length === 0 ? (
+                    <div className="p-12 text-center rounded-2xl bg-black/40 border border-white/10 text-white/40 text-xs font-mono space-y-2">
+                      <p>No intent response logs match your filter criteria.</p>
+                      <button
+                        onClick={() => {
+                          setIntentSearch('');
+                          setIntentRoleFilter('all');
+                          setIntentGoalFilter('all');
+                          setIntentRefFilter('all');
+                        }}
+                        className="text-accent underline text-xs cursor-pointer"
+                      >
+                        Reset all filters
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="w-full overflow-x-auto rounded-2xl border border-white/10 bg-black/40">
+                      <table className="w-full text-left text-xs font-mono">
+                        <thead className="bg-white/5 border-b border-white/10 text-white/60">
+                          <tr>
+                            <th className="p-3.5">Timestamp</th>
+                            <th className="p-3.5">Visitor Role</th>
+                            <th className="p-3.5">Project Goal</th>
+                            <th className="p-3.5">Campaign Source</th>
+                            <th className="p-3.5">Path Visited</th>
+                            <th className="p-3.5 text-center">Status</th>
+                            <th className="p-3.5 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                          {paginatedIntentList.map((evt, idx) => {
+                            const d = evt.created_at ? new Date(evt.created_at) : new Date();
+                            const dateStr = d.toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: '2-digit',
+                              year: 'numeric',
+                            });
+                            const timeStr = d.toLocaleTimeString('en-US', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              second: '2-digit',
+                              hour12: true,
+                            });
+
+                            return (
+                              <tr key={evt.id || idx} className="hover:bg-white/[0.02] transition-colors">
+                                <td className="p-3.5 text-white/60 whitespace-nowrap">
+                                  <span className="font-semibold text-white/80 block">{dateStr}</span>
+                                  <span className="text-[11px] text-white/40">{timeStr}</span>
+                                </td>
+
+                                <td className="p-3.5 whitespace-nowrap">
+                                  <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-blue-500/15 border border-blue-500/30 text-blue-300 font-bold text-xs">
+                                    <span>👤</span>
+                                    <span>{evt.role || 'Other'}</span>
+                                  </span>
+                                </td>
+
+                                <td className="p-3.5">
+                                  <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-purple-500/15 border border-purple-500/30 text-purple-300 font-medium text-xs">
+                                    <span>🎯</span>
+                                    <span>{evt.goal || 'Just exploring'}</span>
+                                  </span>
+                                </td>
+
+                                <td className="p-3.5 whitespace-nowrap">
+                                  <span className="px-2 py-0.5 rounded bg-white/[0.05] border border-white/10 text-accent font-semibold text-xs">
+                                    {evt.ref ? `?ref=${evt.ref}` : 'Direct / Organic'}
+                                  </span>
+                                </td>
+
+                                <td className="p-3.5 text-white/50 text-xs">
+                                  <code>{evt.path || '/'}</code>
+                                </td>
+
+                                <td className="p-3.5 text-center whitespace-nowrap">
+                                  <span className="inline-flex items-center space-x-1 text-emerald-400 font-semibold text-[11px]">
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    <span>DB Persisted</span>
+                                  </span>
+                                </td>
+
+                                <td className="p-3.5 text-right whitespace-nowrap">
+                                  <button
+                                    onClick={() => handleDeleteSiteEvent(evt.id)}
+                                    title="Delete this record"
+                                    className="p-1.5 rounded-xl bg-white/5 hover:bg-red-500/20 text-white/40 hover:text-red-400 transition-colors cursor-pointer"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {/* Pagination Footer */}
+                  {totalPages > 1 && (
+                    <div className="flex items-center justify-between pt-3 text-xs font-mono text-white/60">
+                      <button
+                        disabled={intentPage <= 1}
+                        onClick={() => setIntentPage((p) => Math.max(1, p - 1))}
+                        className="px-3.5 py-1.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                      >
+                        &larr; Previous
+                      </button>
+
+                      <span>
+                        Page {intentPage} of {totalPages}
+                      </span>
+
+                      <button
+                        disabled={intentPage >= totalPages}
+                        onClick={() => setIntentPage((p) => Math.min(totalPages, p + 1))}
+                        className="px-3.5 py-1.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                      >
+                        Next &rarr;
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
           {/* TAB 2: TRAFFIC & TRENDS */}
-          {activeTab === 'traffic' && (
+          {activeTab === 'traffic' && (() => {
+            const siteEvents = summary.siteEvents || [];
+            const answeredEvents = siteEvents.filter((e) => e.event === 'intent_answered');
+            const skippedEvents = siteEvents.filter((e) => e.event === 'intent_skipped');
+            const totalIntentInteractions = answeredEvents.length + skippedEvents.length;
+            const answerRate = totalIntentInteractions > 0
+              ? ((answeredEvents.length / totalIntentInteractions) * 100).toFixed(1)
+              : '0';
+
+            // Role by Ref Matrix
+            const allRefs = Array.from(new Set(answeredEvents.map((e) => (e.ref || 'direct / none').toLowerCase())));
+            if (allRefs.length === 0) allRefs.push('direct / none');
+
+            const refRoleCounts: Record<string, Record<string, number>> = {};
+            answeredEvents.forEach((evt) => {
+              const r = (evt.ref || 'direct / none').toLowerCase();
+              const role = evt.role || 'Other';
+              if (!refRoleCounts[r]) refRoleCounts[r] = {};
+              refRoleCounts[r][role] = (refRoleCounts[r][role] || 0) + 1;
+            });
+
+            // Goal by Role Matrix
+            const allRoles = ['Founder', 'Co-founder', 'Developer', 'Agency / Team', 'Other'];
+            const roleGoalCounts: Record<string, Record<string, number>> = {};
+            answeredEvents.forEach((evt) => {
+              const role = evt.role || 'Other';
+              const goal = evt.goal || 'Just exploring';
+              if (!roleGoalCounts[role]) roleGoalCounts[role] = {};
+              roleGoalCounts[role][goal] = (roleGoalCounts[role][goal] || 0) + 1;
+            });
+
+            return (
             <div className="space-y-8">
+              {/* Intent Intelligence & Conversion Analytics */}
+              <div className="p-6 rounded-3xl bg-[#181816] border border-accent/25 space-y-6 shadow-md">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center space-x-2">
+                      <Sparkles className="w-4 h-4 text-accent" />
+                      <h3 className="font-display text-lg font-bold text-white">
+                        Founder &amp; Visitor Intent Intelligence
+                      </h3>
+                    </div>
+                    <p className="text-xs text-white/50">
+                      Real-time responses to &ldquo;What brings you here?&rdquo; cross-referenced by campaign traffic source (<code className="text-accent font-mono">?ref=</code>).
+                    </p>
+                  </div>
+                  <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-accent/15 border border-accent/30 text-accent font-mono text-xs font-bold shrink-0">
+                    <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+                    <span>{answeredEvents.length} Total Answers</span>
+                  </span>
+                </div>
+
+                {/* Metric Summary Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10">
+                    <span className="text-[11px] font-mono text-white/50 uppercase block mb-1">
+                      Intent Answered
+                    </span>
+                    <div className="flex items-baseline space-x-2">
+                      <span className="text-2xl font-bold font-mono text-white">
+                        {answeredEvents.length}
+                      </span>
+                      <span className="text-[10px] font-mono text-emerald-400">
+                        {answerRate}% Answer Rate
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10">
+                    <span className="text-[11px] font-mono text-white/50 uppercase block mb-1">
+                      Intent Skipped
+                    </span>
+                    <div className="flex items-baseline space-x-2">
+                      <span className="text-2xl font-bold font-mono text-white/80">
+                        {skippedEvents.length}
+                      </span>
+                      <span className="text-[10px] font-mono text-white/40">
+                        Zero Friction Pass
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10">
+                    <span className="text-[11px] font-mono text-white/50 uppercase block mb-1">
+                      Total Prompts Shown
+                    </span>
+                    <div className="flex items-baseline space-x-2">
+                      <span className="text-2xl font-bold font-mono text-accent">
+                        {totalIntentInteractions}
+                      </span>
+                      <span className="text-[10px] font-mono text-white/50">
+                        Modal &amp; Mobile Card
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Table 1: Role by Traffic Ref */}
+                <div className="space-y-3 pt-2">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-mono uppercase tracking-wider text-white/70 font-bold">
+                      Table 1 · Visitor Role by Campaign Source (?ref)
+                    </h4>
+                  </div>
+                  <div className="w-full overflow-x-auto rounded-2xl border border-white/10 bg-black/40">
+                    <table className="w-full text-left text-xs font-mono">
+                      <thead className="bg-white/5 border-b border-white/10 text-white/60">
+                        <tr>
+                          <th className="p-3">Referral Channel (?ref)</th>
+                          <th className="p-3">Founder</th>
+                          <th className="p-3">Co-founder</th>
+                          <th className="p-3">Developer</th>
+                          <th className="p-3">Agency / Team</th>
+                          <th className="p-3">Other</th>
+                          <th className="p-3 text-accent font-bold">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                        {allRefs.map((refKey) => {
+                          const counts = refRoleCounts[refKey] || {};
+                          const totalForRef = (counts.Founder || 0) + (counts['Co-founder'] || 0) + (counts.Developer || 0) + (counts['Agency / Team'] || 0) + (counts.Other || 0);
+                          return (
+                            <tr key={refKey} className="hover:bg-white/[0.02] transition-colors">
+                              <td className="p-3 font-bold text-white flex items-center space-x-1.5">
+                                <span className="w-2 h-2 rounded-full bg-blue-400" />
+                                <span>{refKey}</span>
+                              </td>
+                              <td className="p-3 text-white/80">{counts.Founder || 0}</td>
+                              <td className="p-3 text-white/80">{counts['Co-founder'] || 0}</td>
+                              <td className="p-3 text-white/80">{counts.Developer || 0}</td>
+                              <td className="p-3 text-white/80">{counts['Agency / Team'] || 0}</td>
+                              <td className="p-3 text-white/80">{counts.Other || 0}</td>
+                              <td className="p-3 text-accent font-bold">{totalForRef}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Table 2: Goal by Role */}
+                <div className="space-y-3 pt-4 border-t border-white/10">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-mono uppercase tracking-wider text-white/70 font-bold">
+                      Table 2 · Primary Goal by Visitor Role
+                    </h4>
+                  </div>
+                  <div className="w-full overflow-x-auto rounded-2xl border border-white/10 bg-black/40">
+                    <table className="w-full text-left text-xs font-mono">
+                      <thead className="bg-white/5 border-b border-white/10 text-white/60">
+                        <tr>
+                          <th className="p-3">Visitor Role</th>
+                          <th className="p-3">Build MVP</th>
+                          <th className="p-3">Revamp App</th>
+                          <th className="p-3">Add Features</th>
+                          <th className="p-3">Automate Process</th>
+                          <th className="p-3">Exploring</th>
+                          <th className="p-3 text-accent font-bold">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                        {allRoles.map((roleKey) => {
+                          const counts = roleGoalCounts[roleKey] || {};
+                          const totalForRole =
+                            (counts['Build a new app / MVP'] || 0) +
+                            (counts['Revamp or improve an existing app'] || 0) +
+                            (counts['Add features or integrations'] || 0) +
+                            (counts['Turn a manual process into software'] || 0) +
+                            (counts['Just exploring'] || 0);
+                          return (
+                            <tr key={roleKey} className="hover:bg-white/[0.02] transition-colors">
+                              <td className="p-3 font-bold text-white">{roleKey}</td>
+                              <td className="p-3 text-white/80">{counts['Build a new app / MVP'] || 0}</td>
+                              <td className="p-3 text-white/80">{counts['Revamp or improve an existing app'] || 0}</td>
+                              <td className="p-3 text-white/80">{counts['Add features or integrations'] || 0}</td>
+                              <td className="p-3 text-white/80">{counts['Turn a manual process into software'] || 0}</td>
+                              <td className="p-3 text-white/80">{counts['Just exploring'] || 0}</td>
+                              <td className="p-3 text-accent font-bold">{totalForRole}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
               <div className="p-6 rounded-3xl bg-[#181816] border border-white/10 space-y-6">
                 <div className="space-y-1">
                   <h3 className="font-display text-lg font-bold text-white">
@@ -865,7 +1725,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                 </div>
               </div>
             </div>
-          )}
+            );
+          })()}
 
           {/* TAB 3: PROJECTS & CTR */}
           {activeTab === 'projects' && (
@@ -1000,6 +1861,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                             <span>{lead.projectType}</span>
                           </div>
 
+                          {(lead.role || lead.goal || lead.ref) && (
+                            <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                              {lead.role && (
+                                <span className="px-2 py-0.5 rounded-md bg-accent/15 border border-accent/25 text-accent font-mono text-[10px] font-semibold">
+                                  🎯 {lead.role}
+                                </span>
+                              )}
+                              {lead.goal && (
+                                <span className="px-2 py-0.5 rounded-md bg-blue-500/15 border border-blue-500/25 text-blue-400 font-mono text-[10px]">
+                                  🚀 {lead.goal}
+                                </span>
+                              )}
+                              {lead.ref && (
+                                <span className="px-2 py-0.5 rounded-md bg-purple-500/15 border border-purple-500/25 text-purple-300 font-mono text-[10px]">
+                                  🔗 {lead.ref}
+                                </span>
+                              )}
+                            </div>
+                          )}
+
                           <p className="text-xs text-white/80 line-clamp-2 leading-relaxed">
                             {lead.message}
                           </p>
@@ -1056,6 +1937,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                             {new Date(selectedLead.timestamp).toLocaleDateString()}
                           </span>
                         </div>
+                        {selectedLead.role && (
+                          <div className="p-3 rounded-xl bg-accent/10 border border-accent/20">
+                            <span className="text-accent/70 block text-[10px] uppercase font-semibold">Visitor Role</span>
+                            <span className="text-accent font-bold">🎯 {selectedLead.role}</span>
+                          </div>
+                        )}
+                        {selectedLead.goal && (
+                          <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20">
+                            <span className="text-blue-400/70 block text-[10px] uppercase font-semibold">Primary Goal</span>
+                            <span className="text-blue-300 font-bold">🚀 {selectedLead.goal}</span>
+                          </div>
+                        )}
+                        {selectedLead.ref && (
+                          <div className="p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 col-span-2">
+                            <span className="text-purple-300/70 block text-[10px] uppercase font-semibold">Campaign Ref</span>
+                            <span className="text-purple-200 font-bold">🔗 {selectedLead.ref}</span>
+                          </div>
+                        )}
                       </div>
 
                       {/* Message Content */}
@@ -1988,6 +2887,392 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                     })}
                   </div>
                 )}
+              </div>
+            );
+          })()}
+
+          {/* TAB 8: CHECKLIST LEADS INBOX */}
+          {activeTab === 'checklists' && (() => {
+            const rawChecklists: ChecklistLead[] = summary.checklistLeads || [];
+
+            // Distinct ref sources for dropdown filter
+            const refSources = Array.from(
+              new Set(rawChecklists.map((c) => c.ref || 'Direct').filter(Boolean))
+            );
+
+            // Ref counts
+            const refCounts: Record<string, number> = {};
+            rawChecklists.forEach((c) => {
+              const src = c.ref || 'Direct';
+              refCounts[src] = (refCounts[src] || 0) + 1;
+            });
+
+            // Filter leads
+            const filteredChecklists = rawChecklists.filter((item) => {
+              // Status filter
+              if (checklistStatusFilter !== 'all' && item.status !== checklistStatusFilter) {
+                return false;
+              }
+              // Ref filter
+              if (checklistRefFilter !== 'all') {
+                const itemRef = item.ref || 'Direct';
+                if (itemRef.toLowerCase() !== checklistRefFilter.toLowerCase()) {
+                  return false;
+                }
+              }
+              // Search query
+              if (checklistSearch.trim()) {
+                const q = checklistSearch.toLowerCase();
+                const matchesName = item.name.toLowerCase().includes(q);
+                const matchesEmail = item.email.toLowerCase().includes(q);
+                const matchesIdea = item.idea.toLowerCase().includes(q);
+                const matchesNote = (item.note || '').toLowerCase().includes(q);
+                const matchesRef = (item.ref || 'Direct').toLowerCase().includes(q);
+                return matchesName || matchesEmail || matchesIdea || matchesNote || matchesRef;
+              }
+              return true;
+            });
+
+            const newCount = rawChecklists.filter((c) => c.status === 'new').length;
+            const contactedCount = rawChecklists.filter((c) => c.status === 'contacted').length;
+            const closedCount = rawChecklists.filter((c) => c.status === 'closed').length;
+
+            return (
+              <div className="space-y-6">
+                {/* Header & KPI Summary Cards */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center space-x-2.5">
+                      <span className="relative flex h-2.5 w-2.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-accent"></span>
+                      </span>
+                      <h3 className="font-display text-xl font-bold text-white">
+                        Free MVP Scoping Checklist Leads
+                      </h3>
+                      <span className="px-2.5 py-0.5 rounded-full bg-accent/15 border border-accent/30 text-accent text-[11px] font-mono font-bold">
+                        {rawChecklists.length} Total Captured
+                      </span>
+                    </div>
+                    <p className="text-xs text-white/50">
+                      Founder lead captures from the <code className="text-white/80">/checklist</code> page with project descriptions, referral tags, and notes.
+                    </p>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={handleExportChecklistsCSV}
+                      className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-xs font-mono text-white transition-all shadow-sm"
+                    >
+                      <Download className="w-3.5 h-3.5 text-accent" />
+                      <span>Export CSV</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* KPI Cards Row */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="p-5 rounded-3xl bg-[#181816] border border-white/10 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-mono uppercase tracking-wider text-white/50">Total Leads</span>
+                      <ClipboardList className="w-4 h-4 text-accent" />
+                    </div>
+                    <div className="text-2xl font-bold font-display text-white">{rawChecklists.length}</div>
+                    <div className="text-[11px] font-mono text-white/40">
+                      {contactedCount} contacted · {closedCount} closed
+                    </div>
+                  </div>
+
+                  <div className="p-5 rounded-3xl bg-[#181816] border border-white/10 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-mono uppercase tracking-wider text-amber-400">New / Uncontacted</span>
+                      <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                    </div>
+                    <div className="text-2xl font-bold font-display text-amber-400">{newCount}</div>
+                    <div className="text-[11px] font-mono text-white/40">
+                      Requires scoping outreach & review
+                    </div>
+                  </div>
+
+                  <div className="p-5 rounded-3xl bg-[#181816] border border-white/10 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-mono uppercase tracking-wider text-white/50">Source Breakdown</span>
+                      <Globe className="w-4 h-4 text-blue-400" />
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {Object.keys(refCounts).length === 0 ? (
+                        <span className="text-xs font-mono text-white/30">No sources yet</span>
+                      ) : (
+                        Object.entries(refCounts).map(([src, count]) => (
+                          <span
+                            key={src}
+                            className="px-2 py-0.5 rounded-lg bg-white/[0.04] border border-white/10 text-white/80 font-mono text-[10px]"
+                          >
+                            {src}: <strong>{count}</strong>
+                          </span>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Filter & Search Bar */}
+                <div className="p-4 sm:p-5 rounded-3xl bg-[#181816] border border-white/10 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+                  <div className="relative flex-1">
+                    <Search className="w-4 h-4 text-white/40 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Search checklist leads by name, email, idea, or note..."
+                      value={checklistSearch}
+                      onChange={(e) => setChecklistSearch(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2 rounded-xl bg-black/40 border border-white/10 text-xs text-white placeholder-white/30 font-mono focus:outline-none focus:border-accent"
+                    />
+                    {checklistSearch && (
+                      <button
+                        onClick={() => setChecklistSearch('')}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white text-xs"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex items-center space-x-2.5 shrink-0">
+                    <div className="flex items-center space-x-1.5">
+                      <Filter className="w-3.5 h-3.5 text-accent" />
+                      <select
+                        value={checklistStatusFilter}
+                        onChange={(e) => setChecklistStatusFilter(e.target.value)}
+                        className="px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-xs font-mono text-white/80 focus:outline-none focus:border-accent"
+                      >
+                        <option value="all">All Statuses ({rawChecklists.length})</option>
+                        <option value="new">New ({newCount})</option>
+                        <option value="contacted">Contacted ({contactedCount})</option>
+                        <option value="closed">Closed ({closedCount})</option>
+                      </select>
+                    </div>
+
+                    <select
+                      value={checklistRefFilter}
+                      onChange={(e) => setChecklistRefFilter(e.target.value)}
+                      className="px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-xs font-mono text-white/80 focus:outline-none focus:border-accent"
+                    >
+                      <option value="all">All Traffic Sources</option>
+                      {refSources.map((s) => (
+                        <option key={s} value={s}>
+                          {s} ({refCounts[s] || 0})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Table / Details Split Grid */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                  {/* Leads List */}
+                  <div className="lg:col-span-7 space-y-3">
+                    {filteredChecklists.length === 0 ? (
+                      <div className="p-12 text-center rounded-3xl bg-[#181816] border border-white/10 text-white/40 text-xs font-mono space-y-2">
+                        <p>No matching checklist leads found.</p>
+                        <button
+                          onClick={() => {
+                            setChecklistSearch('');
+                            setChecklistStatusFilter('all');
+                            setChecklistRefFilter('all');
+                          }}
+                          className="text-accent underline text-xs"
+                        >
+                          Reset filters
+                        </button>
+                      </div>
+                    ) : (
+                      filteredChecklists.map((lead) => {
+                        const isSelected = selectedChecklistLead?.id === lead.id;
+                        const dateFormatted = lead.created_at
+                          ? new Date(lead.created_at).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: '2-digit',
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })
+                          : 'Recent';
+
+                        return (
+                          <div
+                            key={lead.id}
+                            onClick={() => {
+                              setSelectedChecklistLead(lead);
+                              setChecklistNoteInput(lead.note || '');
+                            }}
+                            className={`p-5 rounded-3xl border transition-all cursor-pointer space-y-3 shadow-md ${
+                              isSelected
+                                ? 'bg-[#20201E] border-accent/60 shadow-lg'
+                                : 'bg-[#181816] border-white/10 hover:border-white/20'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="space-y-0.5">
+                                <div className="flex items-center space-x-2.5">
+                                  <span className="font-display font-bold text-white text-base">
+                                    {lead.name}
+                                  </span>
+                                  <span
+                                    className={`px-2 py-0.5 rounded-lg text-[10px] font-mono uppercase font-bold ${
+                                      lead.status === 'new'
+                                        ? 'bg-amber-500/15 border border-amber-500/30 text-amber-300'
+                                        : lead.status === 'contacted'
+                                        ? 'bg-blue-500/15 border border-blue-500/30 text-blue-300'
+                                        : 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-300'
+                                    }`}
+                                  >
+                                    {lead.status}
+                                  </span>
+                                  {lead.ref && (
+                                    <span className="px-2 py-0.5 rounded-md bg-white/[0.04] border border-white/10 text-white/60 font-mono text-[10px]">
+                                      via {lead.ref}
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="font-mono text-xs text-white/60 block">
+                                  {lead.email}
+                                </span>
+                              </div>
+
+                              <span className="font-mono text-[11px] text-white/40 shrink-0">
+                                {dateFormatted}
+                              </span>
+                            </div>
+
+                            {/* Project Idea Quote */}
+                            <div className="p-3.5 rounded-2xl bg-black/40 border border-white/5 text-xs text-white/90 leading-relaxed font-sans italic line-clamp-2">
+                              &ldquo;{lead.idea}&rdquo;
+                            </div>
+
+                            {/* Note preview if present */}
+                            {lead.note && (
+                              <div className="text-[11px] font-mono text-accent/80 flex items-center space-x-1.5 pt-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-accent" />
+                                <span className="truncate">Note: {lead.note}</span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  {/* Selected Lead Detail & Note Editor Panel */}
+                  <div className="lg:col-span-5">
+                    {selectedChecklistLead ? (
+                      <div className="p-6 rounded-3xl bg-[#181816] border border-white/10 space-y-5 sticky top-4 shadow-xl">
+                        {/* Header */}
+                        <div className="flex items-start justify-between pb-4 border-b border-white/10">
+                          <div>
+                            <h4 className="font-display font-bold text-xl text-white">
+                              {selectedChecklistLead.name}
+                            </h4>
+                            <a
+                              href={`mailto:${selectedChecklistLead.email}?subject=Your MVP Scoping Checklist & Technical Review`}
+                              className="text-xs font-mono text-accent hover:underline flex items-center space-x-1.5 mt-1"
+                            >
+                              <Mail className="w-3.5 h-3.5" />
+                              <span>{selectedChecklistLead.email}</span>
+                            </a>
+                          </div>
+
+                          <button
+                            onClick={() => handleDeleteChecklist(selectedChecklistLead.id)}
+                            title="Delete Lead Record"
+                            className="p-2 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        {/* Metadata Grid */}
+                        <div className="grid grid-cols-2 gap-3 text-xs font-mono">
+                          <div className="p-3 rounded-2xl bg-white/[0.03] border border-white/5">
+                            <span className="text-white/40 block text-[10px] uppercase">Traffic Source</span>
+                            <span className="text-white font-medium">{selectedChecklistLead.ref || 'Direct'}</span>
+                          </div>
+                          <div className="p-3 rounded-2xl bg-white/[0.03] border border-white/5">
+                            <span className="text-white/40 block text-[10px] uppercase">Date Captured</span>
+                            <span className="text-white font-medium">
+                              {selectedChecklistLead.created_at
+                                ? new Date(selectedChecklistLead.created_at).toLocaleDateString('en-US', {
+                                    month: 'short',
+                                    day: '2-digit',
+                                  })
+                                : 'Recent'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Full Project Description */}
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-mono uppercase tracking-wider text-white/50 block">
+                            What they are building:
+                          </label>
+                          <div className="p-4 rounded-2xl bg-black/40 border border-white/5 text-sm text-white/90 leading-relaxed font-sans">
+                            {selectedChecklistLead.idea}
+                          </div>
+                        </div>
+
+                        {/* Status Selector */}
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-mono uppercase tracking-wider text-white/50 block">
+                            Outreach &amp; Lead Status:
+                          </label>
+                          <div className="grid grid-cols-3 gap-2">
+                            {(['new', 'contacted', 'closed'] as const).map((st) => (
+                              <button
+                                key={st}
+                                onClick={() => handleChecklistStatusChange(selectedChecklistLead.id, st)}
+                                className={`py-2 px-3 rounded-xl text-xs font-mono font-semibold uppercase transition-all ${
+                                  selectedChecklistLead.status === st
+                                    ? st === 'new'
+                                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
+                                      : st === 'contacted'
+                                      ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40 shadow-sm'
+                                      : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm'
+                                    : 'bg-white/5 text-white/50 hover:text-white border border-white/5'
+                                }`}
+                              >
+                                {st}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Private Note Editor */}
+                        <div className="space-y-2 pt-2 border-t border-white/10">
+                          <label className="text-[10px] font-mono uppercase tracking-wider text-white/50 block">
+                            Private Founder Note:
+                          </label>
+                          <textarea
+                            rows={3}
+                            placeholder="Add private note about this lead (e.g. Sent scoping proposal, follower on LinkedIn...)"
+                            value={checklistNoteInput}
+                            onChange={(e) => setChecklistNoteInput(e.target.value)}
+                            className="w-full p-3 rounded-2xl bg-black/40 border border-white/10 text-xs font-mono text-white placeholder-white/30 focus:outline-none focus:border-accent"
+                          />
+                          <button
+                            onClick={handleSaveChecklistNote}
+                            className="w-full py-2.5 rounded-xl bg-accent text-white font-semibold text-xs uppercase tracking-wider hover:bg-white hover:text-black transition-all"
+                          >
+                            Save Note
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-12 text-center rounded-3xl bg-[#181816] border border-white/10 text-white/40 text-xs font-mono">
+                        Select a checklist lead from the left to view full details, update status, and add private notes.
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             );
           })()}
