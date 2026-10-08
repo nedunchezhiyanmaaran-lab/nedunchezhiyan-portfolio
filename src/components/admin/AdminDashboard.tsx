@@ -1321,61 +1321,41 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
               }
             });
 
-            // 2. Attach Events to Devices (Correlate to exact device or closest active session)
+            // 2. Attach Events to Devices (Strictly within active session timeframe)
             rawEvents.forEach((evt) => {
               const desc = evt.description.toLowerCase();
               const meta = (evt.meta || '').toLowerCase();
+
+              // Skip feedback submissions from navigation activity stream (exclusively displayed in Feedbacks tab)
+              if (desc.includes('visitor feedback') || evt.type === 'contact_submit') {
+                return;
+              }
+
               let matchedDevice: DeviceActivity | null = null;
+              const evtTime = new Date(evt.timestamp).getTime();
+              let closestDiff = Infinity;
 
-              // A. Match explicit OS & Browser mentioned in event text or meta
+              // Correlate strictly to a device that was active within 10 minutes of the event
               for (const item of deviceMap.values()) {
-                const matchesOS = desc.includes(item.os.toLowerCase()) || meta.includes(item.os.toLowerCase());
-                const matchesBrowser = desc.includes(item.browser.toLowerCase()) || meta.includes(item.browser.toLowerCase());
-                const matchesRef = item.referrer.toLowerCase() !== 'direct' ? (desc.includes(item.referrer.toLowerCase()) || meta.includes(item.referrer.toLowerCase())) : true;
+                const matchesOS =
+                  desc.includes(item.os.toLowerCase()) ||
+                  meta.includes(item.os.toLowerCase()) ||
+                  (!desc.includes('windows') && !desc.includes('macos') && !desc.includes('android') && !desc.includes('linux'));
 
-                if (matchesOS && matchesBrowser && matchesRef) {
-                  matchedDevice = item;
-                  break;
-                }
-              }
+                if (!matchesOS) continue;
 
-              // B. Correlate by closest active session timestamp (e.g. section read / modal open during a visit)
-              if (!matchedDevice) {
-                const evtTime = new Date(evt.timestamp).getTime();
-                let closestDiff = Infinity;
-
-                for (const item of deviceMap.values()) {
-                  for (const ses of item.sessions) {
-                    const sesTime = new Date(ses.timestamp).getTime();
-                    const diff = Math.abs(evtTime - sesTime);
-                    // Match within 15 minutes of a recorded visit
-                    if (diff < 15 * 60 * 1000 && diff < closestDiff) {
-                      closestDiff = diff;
-                      matchedDevice = item;
-                    }
+                for (const ses of item.sessions) {
+                  const sesTime = new Date(ses.timestamp).getTime();
+                  const diff = Math.abs(evtTime - sesTime);
+                  // Strict match within 10 minutes of that specific visit session
+                  if (diff < 10 * 60 * 1000 && diff < closestDiff) {
+                    closestDiff = diff;
+                    matchedDevice = item;
                   }
                 }
               }
 
-              // C. If still unmatched, try matching by OS keywords if present
-              if (!matchedDevice) {
-                let targetOS = '';
-                if (desc.includes('android') || meta.includes('android')) targetOS = 'android';
-                else if (desc.includes('macos') || desc.includes('safari') || meta.includes('macos')) targetOS = 'macos';
-                else if (desc.includes('linux') || meta.includes('linux')) targetOS = 'linux';
-                else if (desc.includes('windows') || meta.includes('windows')) targetOS = 'windows';
-
-                if (targetOS) {
-                  for (const item of deviceMap.values()) {
-                    if (item.os.toLowerCase() === targetOS) {
-                      matchedDevice = item;
-                      break;
-                    }
-                  }
-                }
-              }
-
-              // D. Attach to the matched device
+              // Attach to matched device
               if (matchedDevice) {
                 const alreadyExists = matchedDevice.actions.some(
                   (a) => a.id === evt.id || (a.description === evt.description && a.timestamp === evt.timestamp)
